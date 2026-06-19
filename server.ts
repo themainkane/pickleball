@@ -26,7 +26,8 @@ app.get('/', (req: Request, res: Response) => {
         </head>
         <body>
             <h1>🥒 Edlington Pickleball Scheduler</h1>
-            <p>Upload your CSV roster and generate a beautiful match schedule instantly.</p>
+            <p>Upload your CSV.</p>
+            <p>Ensure the column heading is formatted as DD/MM/YY and that column contains all your player names.</p>
             
             <div class="box">
                 <!-- This form sends a POST request to /generate -->
@@ -49,8 +50,6 @@ app.get('/', (req: Request, res: Response) => {
     `);
 });
 
-// --- 2. Handle the Generation Request ---
-// When the form is submitted, multer grabs the 'rosterFile' from the request
 app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response) => {
     try {
         if (!req.file) {
