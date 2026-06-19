@@ -2,9 +2,10 @@ import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import { RoundSchedule } from '../BaseScheduler';
 import {PdfConfig} from "./pdfConfig";
+import {Writable} from "node:stream";
 export class PdfGenerator {
     constructor(
-        private outputPath: string,
+        private outputStream: Writable,
         private title: string,
         private description: string,
         private config: PdfConfig
@@ -12,8 +13,7 @@ export class PdfGenerator {
 
     public generate(schedule: RoundSchedule[]): void {
         const doc = new PDFDocument({ margin: 50 });
-        const writeStream = fs.createWriteStream(this.outputPath);
-        doc.pipe(writeStream);
+        doc.pipe(this.outputStream);
 
         this.writeHeader(doc);
 
@@ -26,10 +26,6 @@ export class PdfGenerator {
         });
 
         doc.end();
-
-        writeStream.on('finish', () => {
-            console.log(`✅ Schedule successfully generated and saved to ${this.outputPath}`);
-        });
     }
 
     private writeHeader(doc: typeof PDFDocument): void {

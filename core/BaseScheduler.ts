@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { parse } from 'csv-parse/sync';
+import {Writable} from "node:stream";
 
 export interface Match {
     court: number;
@@ -17,8 +18,8 @@ export abstract class BaseScheduler <TSchedule> {
     protected players: string[] =[]
 
     constructor(
-        protected csvFilePath: string,
-        protected pdfOutputPath: string,
+        protected csvContent: string,
+        protected outputStream: Writable,
         protected targetDateColumn: string
     ) {}
 
@@ -30,19 +31,15 @@ export abstract class BaseScheduler <TSchedule> {
             console.log(`Found ${this.players.length} players. Generating schedule...`);
             const schedule = this.generateSchedule();
 
-            console.log(`Writing output to PDF: ${this.pdfOutputPath}...`);
+            console.log(`Writing output to PDF...`);
             this.createPDF(schedule);
         } catch (error) {
             console.error("Failed to generate schedule:", error);
+            throw error;
         }
     }
     protected loadPlayers(): void {
-        if (!fs.existsSync(this.csvFilePath)) {
-            throw new Error(`Error: File ${this.csvFilePath} not found.`);
-        }
-
-        const fileContent = fs.readFileSync(this.csvFilePath, 'utf8');
-        const records: string[][] = parse(fileContent, { skip_empty_lines: true, trim: true });
+        const records: string[][] = parse(this.csvContent, { skip_empty_lines: true, trim: true });
         const [headers, ...playerRows] = records;
 
         if(!headers || headers.length === 0) {

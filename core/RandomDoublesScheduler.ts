@@ -3,6 +3,7 @@ import PDFDocument from "pdfkit";
 import * as fs from "node:fs";
 import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
+import {Writable} from "node:stream";
 
 export interface DoublesConfig {
     courtsCount: number;
@@ -14,13 +15,13 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
     private config: DoublesConfig;
 
     constructor(
-        csvFilePath: string,
-        pdfOutputPath: string,
+        csvContent: string,
+        outputStream: Writable,
         targetDateColumn: string,
         config: Partial<DoublesConfig> = {}
     ) {
-        super(csvFilePath, pdfOutputPath, targetDateColumn);
-       
+        super(csvContent, outputStream, targetDateColumn);
+
         this.config = {
             courtsCount: 4,
             playersPerCourt: 4,
@@ -119,7 +120,7 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
 
     protected createPDF(schedule: RoundSchedule[]): void {
        const generator = new PdfGenerator(
-           this.pdfOutputPath,
+           this.outputStream,
            `Match Schedule ${this.targetDateColumn}`,
            this.description,
            defaultPdfConfig
