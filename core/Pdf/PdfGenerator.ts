@@ -11,7 +11,7 @@ export class PdfGenerator {
         private config: PdfConfig
     ) {}
 
-    public generate(schedule: RoundSchedule[]): void {
+    public generate(schedule: RoundSchedule[], teamsInfo?: { teamA: string[], teamB: string[] }): void {
         const doc = new PDFDocument({ margin: 50 });
         doc.pipe(this.outputStream);
 
@@ -25,7 +25,29 @@ export class PdfGenerator {
             this.writeRound(doc, round);
         });
 
+            if (teamsInfo) {
+                doc.addPage();
+                this.writeTeamsPage(doc, teamsInfo);
+            }
         doc.end();
+    }
+
+    private writeTeamsPage(doc: typeof PDFDocument, teamsInfo: { teamA: string[], teamB: string[] }): void {
+        doc.fontSize(20)
+            .fillColor('#4169E1')
+            .text('Tournament Teams', { align: 'center' }).moveDown(1);
+
+        // Team A
+        doc.fontSize(16).fillColor('#2c3e50').text('Team A', { underline: true }).moveDown(0.5);
+        doc.fontSize(12).fillColor('black');
+        teamsInfo.teamA.forEach(player => doc.text(`• ${player}`));
+
+        doc.moveDown(1.5);
+
+        // Team B
+        doc.fontSize(16).fillColor('#2c3e50').text('Team B', { underline: true }).moveDown(0.5);
+        doc.fontSize(12).fillColor('black');
+        teamsInfo.teamB.forEach(player => doc.text(`• ${player}`));
     }
 
     private writeHeader(doc: typeof PDFDocument): void {

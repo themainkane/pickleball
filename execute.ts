@@ -1,8 +1,13 @@
 import {RandomDoublesScheduler} from "./core/RandomDoublesScheduler";
+import * as fs from "node:fs";
 
 
 function execute(filePath: string, outputFile: string, date: string) {
-    const scheduler = new RandomDoublesScheduler(filePath, outputFile, date);
+    const csvContent = fs.readFileSync(filePath, 'utf-8');
+
+    const outputStream = fs.createWriteStream(outputFile);
+
+    const scheduler = new RandomDoublesScheduler(csvContent, outputStream, date);
     scheduler.run();
 }
 

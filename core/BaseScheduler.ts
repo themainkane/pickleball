@@ -38,6 +38,13 @@ export abstract class BaseScheduler <TSchedule> {
             throw error;
         }
     }
+
+    public getScheduleData(): { players: string[], schedule: TSchedule } {
+        this.loadPlayers();
+        const schedule = this.generateSchedule();
+        return { players: this.players, schedule };
+    }
+
     protected loadPlayers(): void {
         const records: string[][] = parse(this.csvContent, { skip_empty_lines: true, trim: true });
         const [headers, ...playerRows] = records;
