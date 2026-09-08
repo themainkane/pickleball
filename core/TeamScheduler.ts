@@ -1,12 +1,19 @@
-import { BaseScheduler, RoundSchedule, Match } from './BaseScheduler';
+import {BaseScheduler, DEFAULT_PARTNER_PRIORITY, type Match, type RoundSchedule} from './BaseScheduler';
 import { Writable } from 'node:stream';
 import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
+import type {PartnersInput} from "./Partners";
 
 
 export interface TeamConfig {
     courtsCount: number;
     totalRounds: number;
+    /** Partnerships the scheduler favours, including keeping them on the same team. */
+    partners: PartnersInput;
+    /** How strongly to favour those partnerships. See DEFAULT_PARTNER_PRIORITY. */
+    partnerPriority: number;
+    /** Names typed straight into the UI. When set, the CSV is ignored. */
+    rosterNames: string[];
 }
 
 export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
@@ -20,27 +27,29 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
         targetDateColumn: string,
         config: Partial<TeamConfig> = {}
     ) {
-        super(csvContent, outputStream, targetDateColumn);
+        super(csvContent, outputStream, targetDateColumn, config.partners, config.partnerPriority, config.rosterNames);
 
         this.config = {
             courtsCount: 4,
             totalRounds: 6,
+            partners: [],
+            partnerPriority: DEFAULT_PARTNER_PRIORITY,
+            rosterNames: [],
             ...config
         };
     }
 
     protected generateSchedule(): RoundSchedule[] {
-        // 1. Shuffle all players and divide them evenly into two teams
-        const shuffledPlayers = this.shuffleArray([...this.players]);
-        const midPoint = Math.ceil(shuffledPlayers.length / 2);
-        this.teamA = shuffledPlayers.slice(0, midPoint);
-        this.teamB = shuffledPlayers.slice(midPoint);
+        // 1. Divide players into two even teams, keeping preferred partners together where possible
+        this.splitIntoTeams();
 
         const restCounts = new Map<string, number>();
         this.players.forEach(p => restCounts.set(p, 0));
 
         let lastRestedA = new Set<string>();
         let lastRestedB = new Set<string>();
+
+        this.resetPairHistory();
 
         const rounds: RoundSchedule[] = [];
 
@@ -57,25 +66,25 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             const playingPerTeam = activeMatches * 2;
 
             // 3. Select playing/resting players for this round
-            const { playing: playingA, resting: restingA, newLastRested: newLastRestedA } =
-                this.selectPlayers(this.teamA, playingPerTeam, lastRestedA, restCounts);
-            lastRestedA = newLastRestedA;
+            const restingA = this.selectResters(this.teamA, this.teamA.length - playingPerTeam, lastRestedA, restCounts);
+            const playingA = this.teamA.filter(p => !restingA.includes(p));
+            lastRestedA = new Set(restingA);
 
-            const { playing: playingB, resting: restingB, newLastRested: newLastRestedB } =
-                this.selectPlayers(this.teamB, playingPerTeam, lastRestedB, restCounts);
-            lastRestedB = newLastRestedB;
+            const restingB = this.selectResters(this.teamB, this.teamB.length - playingPerTeam, lastRestedB, restCounts);
+            const playingB = this.teamB.filter(p => !restingB.includes(p));
+            lastRestedB = new Set(restingB);
 
-            // 4. Form random pairs within each team
-            const pairsA = this.formPairs(playingA);
-            const pairsB = this.formPairs(playingB);
+            // 4. Form pairs within each team, favouring preferred partnerships
+            const pairsA = this.shuffleArray(this.formPairs(playingA));
+            const pairsB = this.shuffleArray(this.formPairs(playingB));
 
             // 5. Create fixtures (Team A pair vs Team B pair)
             const matches: Match[] = [];
             for (let i = 0; i < activeMatches; i++) {
                 matches.push({
                     court: i + 1,
-                    team1: pairsA[i],
-                    team2: pairsB[i]
+                    team1: pairsA[i]!,
+                    team2: pairsB[i]!
                 });
             }
 
@@ -89,34 +98,47 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
         return rounds;
     }
 
-    // Helper to rotate resting players evenly
-    private selectPlayers(team: string[], playingCount: number, lastRested: Set<string>, restCounts: Map<string, number>) {
-        const restingCount = team.length - playingCount;
-        let eligibleToRest = team.filter(p => !lastRested.has(p));
+    /**
+     * Splits the roster into two teams that differ in size by at most one.
+     *
+     * Players with the most preferred partners are placed first and each player
+     * joins whichever team already holds more of their preferred partners, so
+     * partnerships land on the same team where the size limit allows it. A player
+     * with partners on both sides simply follows one of them.
+     */
+    private splitIntoTeams(): void {
+        const capacityA = Math.ceil(this.players.length / 2);
+        const capacityB = this.players.length - capacityA;
 
-        if (eligibleToRest.length < restingCount) {
-            eligibleToRest = [...team];
-        }
+        const placementOrder = this.shuffleArray(this.players)
+            .sort((a, b) => this.preferredPartnersFor(b).size - this.preferredPartnersFor(a).size);
 
-        eligibleToRest = this.shuffleArray(eligibleToRest);
-        eligibleToRest.sort((a, b) => restCounts.get(a)! - restCounts.get(b)!);
+        this.teamA = [];
+        this.teamB = [];
 
-        const resting = eligibleToRest.slice(0, restingCount);
-        const playing = team.filter(p => !resting.includes(p));
+        placementOrder.forEach(player => {
+            if (this.teamA.length >= capacityA) {
+                this.teamB.push(player);
+                return;
+            }
+            if (this.teamB.length >= capacityB) {
+                this.teamA.push(player);
+                return;
+            }
 
-        resting.forEach(p => restCounts.set(p, restCounts.get(p)! + 1));
+            const pullToA = this.countPreferredPartnersIn(player, this.teamA);
+            const pullToB = this.countPreferredPartnersIn(player, this.teamB);
 
-        return { playing, resting, newLastRested: new Set(resting) };
-    }
-
-    // Helper to pair up active players
-    private formPairs(players: string[]): [string, string][] {
-        const shuffled = this.shuffleArray([...players]);
-        const pairs: [string, string][] = [];
-        for (let i = 0; i < shuffled.length; i += 2) {
-            pairs.push([shuffled[i], shuffled[i + 1]]);
-        }
-        return pairs;
+            if (pullToA > pullToB) {
+                this.teamA.push(player);
+            } else if (pullToB > pullToA) {
+                this.teamB.push(player);
+            } else if (this.teamA.length <= this.teamB.length) {
+                this.teamA.push(player);
+            } else {
+                this.teamB.push(player);
+            }
+        });
     }
 
     private description = "11 minute timed games with a 1-2 minute break between rounds.\n5 points for a win\n3 points for a draw\n1 point for a loss with >7 points\n0 points for a loss with <7 points";
@@ -127,7 +149,7 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             `Team Schedule ${this.targetDateColumn}`,
             this.description,
             defaultPdfConfig);
-        generator.generate(schedule);
+        generator.generate(schedule, undefined, this.preferredPairs);
 
 
         console.log(`Team A: ${this.teamA.join(', ')}`);

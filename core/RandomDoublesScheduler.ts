@@ -1,14 +1,19 @@
-import {BaseScheduler, type Match, type RoundSchedule} from "./BaseScheduler";
-import PDFDocument from "pdfkit";
-import * as fs from "node:fs";
+import {BaseScheduler, DEFAULT_PARTNER_PRIORITY, type Match, type RoundSchedule} from "./BaseScheduler";
 import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
 import {Writable} from "node:stream";
+import type {PartnersInput} from "./Partners";
 
 export interface DoublesConfig {
     courtsCount: number;
     playersPerCourt: number;
     totalRounds: number;
+    /** Partnerships the scheduler favours when forming teams. */
+    partners: PartnersInput;
+    /** How strongly to favour those partnerships. See DEFAULT_PARTNER_PRIORITY. */
+    partnerPriority: number;
+    /** Names typed straight into the UI. When set, the CSV is ignored. */
+    rosterNames: string[];
 }
 
 export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
@@ -20,12 +25,15 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
         targetDateColumn: string,
         config: Partial<DoublesConfig> = {}
     ) {
-        super(csvContent, outputStream, targetDateColumn);
+        super(csvContent, outputStream, targetDateColumn, config.partners, config.partnerPriority, config.rosterNames);
 
         this.config = {
             courtsCount: 4,
             playersPerCourt: 4,
             totalRounds: 12,
+            partners: [],
+            partnerPriority: DEFAULT_PARTNER_PRIORITY,
+            rosterNames: [],
             ...config
         };
     }
@@ -41,62 +49,29 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
         this.players.forEach(p => restCounts.set(p, 0));
         let lastRested = new Set<string>();
 
-        const pairCounts = new Map<string, Map<string, number>>();
-        this.players.forEach(p => {
-            const map = new Map<string, number>();
-            this.players.forEach(p2 => map.set(p2, 0));
-            pairCounts.set(p, map);
-        });
+        this.resetPairHistory();
 
         const rounds: RoundSchedule[] = [];
 
         for (let round = 1; round <= this.config.totalRounds; round++) {
 
-            let eligibleToRest = this.players.filter(player => !lastRested.has(player));
-
-            if (eligibleToRest.length < numResters) {
-                eligibleToRest = [...this.players];
-            }
-
-            eligibleToRest = this.shuffleArray(eligibleToRest);
-            eligibleToRest.sort((a, b) => restCounts.get(a)! - restCounts.get(b)!);
-
-            const currentResters = eligibleToRest.slice(0, numResters);
-            const playingThisRound = this.players.filter(p => !currentResters.includes(p));
-
-            currentResters.forEach(p => restCounts.set(p, restCounts.get(p)! + 1));
+            // --- A. Rotate the rest pile (fewest rests first) ---
+            const currentResters = this.selectResters(this.players, numResters, lastRested, restCounts);
             lastRested = new Set(currentResters);
 
-            // --- B. Form Unique Pairs ---
-            let availablePlayers = this.shuffleArray([...playingThisRound]);
-            const teams: [string, string][] = [];
+            const restingThisRound = new Set(currentResters);
+            const playingThisRound = this.players.filter(p => !restingThisRound.has(p));
 
-            while (availablePlayers.length >= 2) {
-                const p1 = availablePlayers.shift()!;
+            // --- B. Team everyone up, favouring preferred partnerships ---
+            const teams = this.formPairs(playingThisRound);
 
-                let bestP2Idx = 0;
-                let minPairings = Infinity;
-
-                for (let i = 0; i < availablePlayers.length; i++) {
-                    const p2 = availablePlayers[i]!;
-                    const count = pairCounts.get(p1)!.get(p2)!;
-                    if (count < minPairings) {
-                        minPairings = count;
-                        bestP2Idx = i;
-                    }
-                }
-
-                const p2 = availablePlayers.splice(bestP2Idx, 1)[0]!;
-                teams.push([p1, p2]);
-
-                pairCounts.get(p1)!.set(p2, pairCounts.get(p1)!.get(p2)! + 1);
-                pairCounts.get(p2)!.set(p1, pairCounts.get(p2)!.get(p1)! + 1);
-            }
+            // Shuffle so the same teams don't camp on the same court every round.
+            const orderedTeams = this.shuffleArray(teams);
 
             const matches: Match[] = [];
             for (let i = 0; i < activeCourtsCount; i++) {
-                const team1 = teams.shift() || null;
-                const team2 = teams.shift() || null;
+                const team1 = orderedTeams.shift() || null;
+                const team2 = orderedTeams.shift() || null;
 
                 if (team1) {
                     matches.push({
@@ -126,6 +101,6 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
            defaultPdfConfig
        );
 
-        generator.generate(schedule);
+        generator.generate(schedule, undefined, this.preferredPairs);
     }
 }

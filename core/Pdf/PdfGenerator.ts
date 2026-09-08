@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { RoundSchedule } from '../BaseScheduler';
 import {PdfConfig} from "./pdfConfig";
 import {Writable} from "node:stream";
+import type {PreferredPair} from "../Partners";
 export class PdfGenerator {
     constructor(
         private outputStream: Writable,
@@ -11,14 +12,18 @@ export class PdfGenerator {
         private config: PdfConfig
     ) {}
 
-    public generate(schedule: RoundSchedule[], teamsInfo?: { teamA: string[], teamB: string[] }): void {
+    public generate(
+        schedule: RoundSchedule[],
+        teamsInfo?: { teamA: string[], teamB: string[] },
+        preferredPairs?: PreferredPair[]
+    ): void {
         const doc = new PDFDocument({ margin: 50 });
         doc.pipe(this.outputStream);
 
-        this.writeHeader(doc);
+        this.writeHeader(doc, preferredPairs);
 
         schedule.forEach((round) => {
-            if (!this.canFitNextRoundOnPage(doc)) {
+            if (!this.canFitNextRoundOnPage(doc, round)) {
                 doc.addPage();
             }
 
@@ -50,7 +55,7 @@ export class PdfGenerator {
         teamsInfo.teamB.forEach(player => doc.text(`• ${player}`));
     }
 
-    private writeHeader(doc: typeof PDFDocument): void {
+    private writeHeader(doc: typeof PDFDocument, preferredPairs?: PreferredPair[]): void {
         doc.fontSize(24)
             .fillColor('#4169E1')
             .text('Edlington Pickleball Club', { align: 'center', }).moveDown(0.3);
@@ -65,6 +70,16 @@ export class PdfGenerator {
             .fillColor('#7f8c8d')
             .text(this.description, { align: 'center' });
 
+        if (preferredPairs && preferredPairs.length > 0) {
+            doc.moveDown(0.5);
+            doc.fontSize(11)
+                .fillColor('#4169E1')
+                .text(
+                    `Preferred partnerships: ${preferredPairs.map(([first, second]) => `${first} & ${second}`).join(' | ')}`,
+                    { align: 'center' }
+                );
+        }
+
         doc.moveDown(2);
         doc.fillColor('black'); // Reset color
     }
@@ -75,15 +90,18 @@ export class PdfGenerator {
         doc.moveDown(0.5);
 
         const startY = doc.y + 15;
+        const perRow = this.courtsPerRow(doc);
+        const rowHeight = this.config.courtHeight + this.config.courtRowSpacing;
 
         round.matches.forEach((match, index) => {
-            const x = 50 + index * (this.config.courtWidth + this.config.courtSpacing);
-            const y = startY;
+            const x = 50 + (index % perRow) * (this.config.courtWidth + this.config.courtSpacing);
+            const y = startY + Math.floor(index / perRow) * rowHeight;
 
             this.drawCourt(doc, x, y, this.config.courtWidth, this.config.courtHeight, match);
         });
 
-        doc.y = startY + this.config.courtHeight + this.config.restPileSpacing;
+        const rows = Math.max(1, Math.ceil(round.matches.length / perRow));
+        doc.y = startY + (rows - 1) * rowHeight + this.config.courtHeight + this.config.restPileSpacing;
         doc.x = 50;
 
 
@@ -93,6 +111,15 @@ export class PdfGenerator {
             .fillColor('black');
 
         doc.moveDown(2);
+    }
+
+    /** How many courts fit side by side within the page margins. */
+    private courtsPerRow(doc: typeof PDFDocument): number {
+        const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        const perRow = Math.floor(
+            (usableWidth + this.config.courtSpacing) / (this.config.courtWidth + this.config.courtSpacing)
+        );
+        return Math.max(1, perRow);
     }
 
     /**
@@ -140,7 +167,13 @@ export class PdfGenerator {
         doc.strokeColor('black');
     }
 
-    private canFitNextRoundOnPage(doc : typeof PDFDocument){
-      return  doc.y + 200 < doc.page.height - doc.page.margins.bottom
+    private canFitNextRoundOnPage(doc : typeof PDFDocument, round: RoundSchedule){
+      return  doc.y + this.estimateRoundHeight(doc, round) < doc.page.height - doc.page.margins.bottom
+    }
+
+    /** Round heading + however many rows of courts it needs + the rest pile line. */
+    private estimateRoundHeight(doc: typeof PDFDocument, round: RoundSchedule): number {
+        const rows = Math.max(1, Math.ceil(round.matches.length / this.courtsPerRow(doc)));
+        return 60 + rows * (this.config.courtHeight + this.config.courtRowSpacing);
     }
 }

@@ -4,12 +4,43 @@ import { RandomDoublesScheduler } from './core/RandomDoublesScheduler';
 import {TeamScheduler} from "./core/TeamScheduler";
 import {defaultPdfConfig} from "./core/Pdf/pdfConfig";
 import {PdfGenerator} from "./core/Pdf/PdfGenerator";
+import {
+    DEFAULT_COURTS,
+    MAX_COURTS,
+    MIN_COURTS,
+    setupFormHtml,
+    setupFormScript,
+    setupFormStyles
+} from "./core/Ui/setupForm";
 
 const app = express();
 const port = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const upload = multer({ storage: multer.memoryStorage() });
+
+/** Keeps a submitted court count inside the selectable range. */
+function parseCourtsCount(value: unknown): number {
+    const parsed = parseInt(String(value), 10);
+    if (isNaN(parsed)) return DEFAULT_COURTS;
+    return Math.min(MAX_COURTS, Math.max(MIN_COURTS, parsed));
+}
+
+/** Splits a typed roster (one name per line, or comma separated) into names. */
+function parsePlayerNames(value: unknown): string[] {
+    if (typeof value !== 'string') return [];
+    return value
+        .split(/[\r\n,]+/)
+        .map(name => name.trim())
+        .filter(name => name !== '');
+}
+
+/** Today as DD/MM/YY, used when a typed roster comes in without a date. */
+function todayLabel(): string {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)}`;
+}
 
 // --- 1. Serve the HTML Webpage ---
 // When someone goes to localhost:3000, send them this HTML form
@@ -25,6 +56,7 @@ app.get('/', (req: Request, res: Response) => {
                 button { background: #4169E1; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 15px; }
                 button:hover { background: #3154b3; }
                 input { margin: 10px 0; padding: 5px; }
+                ${setupFormStyles()}
             </style>
         </head>
         <body>
@@ -35,32 +67,18 @@ app.get('/', (req: Request, res: Response) => {
                 <a href="/live" class="live-link">🎾 Go to Live Scoring Dashboard 🎾</a>
             </div>
             
-            <div class="box">
-                <form action="/generate" method="POST" enctype="multipart/form-data">
-                    <div>
-                        <label><b>1. Select CSV File:</b></label><br>
-                        <input type="file" name="rosterFile" accept=".csv" required />
-                    </div>
-                    
-                    <div style="margin-top: 15px;">
-                        <label><b>2. Target Date Column (e.g. 22/06/26):</b></label><br>
-                        <input type="text" name="targetDate" placeholder="DD/MM/YY" required />
-                    </div>
-                     <div style="margin-top: 15px;">
-                        <label><b>3. Select Game Mode:</b></label><br>
-                        <select name="gameMode" style="padding: 5px; font-size: 14px;">
-                            <option value="random">Random Doubles</option>
-                            <option value="teams">Teams</option>
-                        </select>
-                    </div>
-                     <div style="margin-top: 15px;">
-                        <label><b>4. Number of Rounds:</b></label><br>
-                        <input type="number" name="rounds" value="8" min="1" required style="padding: 5px; font-size: 14px; width: 80px;" />
-                    </div>
-                    
-                    <button type="submit">Generate Schedule PDF</button>
-                </form>
+            <div class="box setup-form">
+                ${setupFormHtml({
+                    formId: 'pdf-form',
+                    action: '/generate',
+                    submitLabel: 'Generate Schedule PDF'
+                })}
             </div>
+            <script>
+                ${setupFormScript()}
+
+                initSetupForm('pdf-form', { plainPost: true });
+            </script>
         </body>
         </html>
     `);
@@ -68,25 +86,41 @@ app.get('/', (req: Request, res: Response) => {
 
 app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Response) => {
     try {
-        if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
-        if (!req.body.targetDate) return res.status(400).json({ error: 'Target date required.' });
+        const rosterNames = parsePlayerNames(req.body.playerNames);
 
+        if (!req.file && rosterNames.length === 0) {
+            return res.status(400).json({ error: 'Upload a CSV or type in some player names.' });
+        }
+        if (!req.file && rosterNames.length < 4) {
+            return res.status(400).json({ error: 'Please enter at least 4 player names.' });
+        }
+        if (req.file && rosterNames.length === 0 && !req.body.targetDate) {
+            return res.status(400).json({ error: 'Target date required.' });
+        }
+
+        const targetDate = req.body.targetDate || todayLabel();
         const gameMode = req.body.gameMode;
         const roundsCount = parseInt(req.body.rounds) || 8;
-        const csvContent = req.file.buffer.toString('utf-8');
+        const courtsCount = parseCourtsCount(req.body.courts);
+        const partners = req.body.partners || '';
+        const scoringSystem = req.body.scoringSystem === 'football' ? 'football' : 'pickleball';
+        const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
 
         let scheduler: RandomDoublesScheduler | TeamScheduler;
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, req.body.targetDate,{ totalRounds: roundsCount } );
+            scheduler = new TeamScheduler(csvContent, res, targetDate,{ totalRounds: roundsCount, courtsCount, partners, rosterNames } );
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, req.body.targetDate,{ totalRounds: roundsCount });
+            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate,{ totalRounds: roundsCount, courtsCount, partners, rosterNames });
         }
 
         const data = scheduler.getScheduleData();
 
         const responseJson: any = {
             mode: gameMode,
+            targetDate,
+            scoringSystem,
             players: data.players,
+            preferredPairs: data.preferredPairs,
             schedule: data.schedule
         };
 
@@ -124,7 +158,7 @@ app.get('/live', (req: Request, res: Response) => {
                 button:hover { background: #3154b3; }
                 .leaderboard-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
                 .setup-form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto;}
-                input[type="text"], input[type="file"], select { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 15px; }
+                ${setupFormStyles()}
             </style>
         </head>
         <body>
@@ -135,30 +169,19 @@ app.get('/live', (req: Request, res: Response) => {
             
             <div id="setup-area" class="setup-form" style="display:none;">
                 <h3>Start New Tournament</h3>
-                <form id="start-form">
-                    <label><b>1. Select CSV File:</b></label>
-                    <input type="file" id="csv-file" accept=".csv" required />
-                    
-                  <label><b>2. Target Date Column:</b></label>
-                    <input type="text" id="target-date" placeholder="DD/MM/YY" required />
-                    
-                    <label><b>3. Game Mode:</b></label>
-                    <select id="game-mode">
-                        <option value="random">Random Doubles</option>
-                        <option value="teams">Teams</option>
-                    </select>
-
-                    <label><b>4. Number of Rounds:</b></label>
-                    <input type="number" id="rounds" value="8" min="1" required />
-                    
-                    <button type="submit" style="width: 100%;">Generate & Start Scoring</button>
-                </form>
+                ${setupFormHtml({
+                    formId: 'start-form',
+                    submitLabel: 'Generate & Start Scoring',
+                    includeScoring: true
+                })}
             </div>
 
             <div class="container" id="app-area" style="display:none;">
                 <div class="main" id="rounds-container"></div>
                 <div class="sidebar">
                     <h2>Leaderboard</h2>
+                    <div id="scoring-system-info"></div>
+                    <div id="partners-container"></div>
                     <div id="leaderboard-container"></div>
                     <br>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -169,6 +192,8 @@ app.get('/live', (req: Request, res: Response) => {
             </div>
 
             <script>
+                ${setupFormScript()}
+
                 // 1. Load Data from LocalStorage
                 let tournament = JSON.parse(localStorage.getItem('pb_tournament')) || null;
                 let matchScores = JSON.parse(localStorage.getItem('pb_scores')) || {};
@@ -214,16 +239,20 @@ app.get('/live', (req: Request, res: Response) => {
                 // 2. Handle generating the schedule via API
                 document.getElementById('start-form').addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    const file = document.getElementById('csv-file').files[0];
-                    const date = document.getElementById('target-date').value;
-                    const mode = document.getElementById('game-mode').value;
-                    const rounds = document.getElementById('rounds').value;
+                    if (!rosterIsValid()) return;
 
                     const formData = new FormData();
-                    formData.append('rosterFile', file);
-                    formData.append('targetDate', date);
-                    formData.append('gameMode', mode);
-                    formData.append('rounds', rounds);
+                    if (manualNamesActive()) {
+                        formData.append('playerNames', rosterNamesText());
+                    } else {
+                        formData.append('rosterFile', document.getElementById('csv-file').files[0]);
+                        formData.append('targetDate', document.getElementById('target-date').value);
+                    }
+                    formData.append('gameMode', document.getElementById('game-mode').value);
+                    formData.append('rounds', document.getElementById('rounds').value);
+                    formData.append('courts', document.getElementById('courts').value);
+                    formData.append('partners', document.getElementById('partners').value);
+                    formData.append('scoringSystem', document.getElementById('scoring-system').value);
 
                     const res = await fetch('/api/generate', { method: 'POST', body: formData });
                     const data = await res.json();
@@ -236,13 +265,15 @@ app.get('/live', (req: Request, res: Response) => {
                     renderApp();
                 });
 
-                // 3. Point calculation logic
+                // 3. Point calculation logic (SCORING_SYSTEMS comes from the shared form script)
+                function activeSystem() {
+                    const key = (tournament && tournament.scoringSystem) || 'pickleball';
+                    return SCORING_SYSTEMS[key] || SCORING_SYSTEMS.pickleball;
+                }
+
                 function calculatePoints(myScore, oppScore) {
                     if (myScore === null || oppScore === null || isNaN(myScore) || isNaN(oppScore)) return 0;
-                    if (myScore > oppScore) return 5;
-                    if (myScore === oppScore) return 3;
-                    if (myScore >= 7) return 1;
-                    return 0;
+                    return activeSystem().points(myScore, oppScore);
                 }
 
                 // 4. Input score handler
@@ -263,6 +294,8 @@ app.get('/live', (req: Request, res: Response) => {
                     if(!tournament) {
                         document.getElementById('setup-area').style.display = 'block';
                         document.getElementById('app-area').style.display = 'none';
+                        renderScoringGuide();
+                        initSetupForm('start-form');
                         return;
                     }
                     
@@ -306,6 +339,19 @@ app.get('/live', (req: Request, res: Response) => {
                 }
 
                 function renderLeaderboard() {
+                    const system = activeSystem();
+                    const systemDiv = document.getElementById('scoring-system-info');
+                    systemDiv.innerHTML = \`<h4 style="margin: 0 0 5px; color: #4169E1;">Scoring: \${system.name}</h4>
+                         <div style="font-size: 12px; color: #666; margin-bottom: 15px;">\${system.guide}</div>\`;
+
+                    const partnersDiv = document.getElementById('partners-container');
+                    const preferredPairs = tournament.preferredPairs || [];
+                    partnersDiv.innerHTML = preferredPairs.length === 0 ? '' :
+                        \`<h4 style="margin: 0 0 5px; color: #4169E1;">Preferred Partnerships</h4>
+                         <div style="font-size: 14px; color: #555; margin-bottom: 15px;">
+                            \${preferredPairs.map(p => \`<div>🤝 \${p[0]} &amp; \${p[1]}</div>\`).join('')}
+                         </div>\`;
+
                     const points = {};
                     tournament.players.forEach(p => points[p] = 0);
 
@@ -351,30 +397,40 @@ app.get('/live', (req: Request, res: Response) => {
 
 app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response) => {
     try {
-        if (!req.file) {
-            console.error('No file uploaded.');
-            return res.status(400).send('No file uploaded.');
-        }
-        const targetDate = req.body.targetDate || "Unknown Date"
+        const rosterNames = parsePlayerNames(req.body.playerNames);
 
-        if (!targetDate) {
-            console.error('Target date is required.');
-            return res.status(400).send('Target date is required.');
+        if (!req.file && rosterNames.length === 0) {
+            console.error('No roster supplied.');
+            return res.status(400).send('Upload a CSV or type in some player names. <a href="/">Go Back</a>');
         }
+
+        const usingCsv = !!req.file && rosterNames.length === 0;
+        if (usingCsv && !req.body.targetDate) {
+            console.error('Target date is required.');
+            return res.status(400).send('Target date is required. <a href="/">Go Back</a>');
+        }
+
+        const targetDate = req.body.targetDate || todayLabel();
 
         const gameMode = req.body.gameMode;
         const roundsCount = parseInt(req.body.rounds) || 8;
-        const csvContent = req.file.buffer.toString('utf-8');
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="Schedule_${targetDate.replace(/\//g, '-')}.pdf"`);
+        const courtsCount = parseCourtsCount(req.body.courts);
+        const partners = req.body.partners || '';
+        const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
 
         // Create the scheduler, passing in the string and the 'res' (Response) stream
         let scheduler: RandomDoublesScheduler | TeamScheduler;
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, targetDate, { totalRounds: roundsCount });
+            scheduler = new TeamScheduler(csvContent, res, targetDate, { totalRounds: roundsCount, courtsCount, partners, rosterNames });
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { totalRounds: roundsCount });
+            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { totalRounds: roundsCount, courtsCount, partners, rosterNames });
         }
+
+        // Surface roster/partner problems as HTML before we start streaming a PDF
+        scheduler.validate();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Schedule_${targetDate.replace(/\//g, '-')}.pdf"`);
 
 
         // Run it! The PDF will pipe directly back to the user.
@@ -390,7 +446,7 @@ app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response)
 // --- PDF Download Endpoint for Live Dashboard ---
 app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res: Response) => {
     try {
-        const { schedule, targetDate, mode, teamA, teamB } = req.body;
+        const { schedule, targetDate, mode, teamA, teamB, preferredPairs } = req.body;
 
         if (!schedule ) {
             console.error("Missing schedule or targetDate! Body received was:", req.body);
@@ -406,7 +462,7 @@ app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res:
 
         const teamsInfo = (mode === 'teams' && teamA && teamB) ? { teamA, teamB } : undefined;
 
-        generator.generate(schedule, teamsInfo);
+        generator.generate(schedule, teamsInfo, Array.isArray(preferredPairs) ? preferredPairs : undefined);
     } catch (error: any) {
         console.error(error);
         res.status(500).send('Error generating PDF');
