@@ -1,5 +1,4 @@
 import PDFDocument from 'pdfkit';
-import * as fs from 'fs';
 import { RoundSchedule } from '../BaseScheduler';
 import {PdfConfig} from "./pdfConfig";
 import {Writable} from "node:stream";

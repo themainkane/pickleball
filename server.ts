@@ -138,7 +138,7 @@ app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Respo
 
         const data = scheduler.getScheduleData();
 
-        const responseJson: any = {
+        const responseJson = {
             mode: gameMode,
             targetDate,
             scoringSystem,
@@ -156,7 +156,7 @@ app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Respo
         }
 
         res.json(responseJson);
-    } catch (error: any) {
+    } catch (error: Error) {
         console.error(error);
         res.status(500).json({ error: error.message });
     }
@@ -445,7 +445,7 @@ app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response)
         // Run it! The PDF will pipe directly back to the user.
         scheduler.run();
 
-    } catch (error: any) {
+    } catch (error: Error) {
         console.error(error);
         // If they type the wrong date or the CSV is bad, show them the error
         res.status(500).send(`<h2>Error Generating Schedule:</h2><p>${error.message}</p><a href="/">Go Back</a>`);
@@ -474,7 +474,7 @@ app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res:
             preferredPairs: Array.isArray(preferredPairs) ? preferredPairs : undefined,
             restDeclarations: Array.isArray(restDeclarations) ? restDeclarations : undefined
         });
-    } catch (error: any) {
+    } catch (error: Error) {
         console.error(error);
         res.status(500).send('Error generating PDF');
     }
