@@ -12,6 +12,8 @@ import {
     setupFormScript,
     setupFormStyles
 } from "./core/Ui/setupForm";
+import { leaderboardScript, leaderboardStyles } from "./core/Ui/leaderboard";
+import { DEFAULT_RESTS_PER_PLAYER } from "./core/Rests";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -24,6 +26,29 @@ function parseCourtsCount(value: unknown): number {
     const parsed = parseInt(String(value), 10);
     if (isNaN(parsed)) return DEFAULT_COURTS;
     return Math.min(MAX_COURTS, Math.max(MIN_COURTS, parsed));
+}
+
+/** Rests for players with no number of their own. Nonsense falls back to the default. */
+function parseDefaultRests(value: unknown): number {
+    const parsed = parseInt(String(value), 10);
+    if (isNaN(parsed) || parsed < 0) return DEFAULT_RESTS_PER_PLAYER;
+    return parsed;
+}
+
+/** The session settings both the PDF and the API routes read off the form. */
+function parseSessionSettings(body: Record<string, unknown>) {
+    return {
+        totalRounds: parseInt(String(body.rounds)) || 8,
+        courtsCount: parseCourtsCount(body.courts),
+        partners: formField(body.partners),
+        rests: formField(body.playerRests),
+        defaultRests: parseDefaultRests(body.restsPerPlayer)
+    };
+}
+
+/** A submitted text field as a string, with anything missing read as empty. */
+function formField(value: unknown): string {
+    return typeof value === 'string' ? value : '';
 }
 
 /** Splits a typed roster (one name per line, or comma separated) into names. */
@@ -100,17 +125,15 @@ app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Respo
 
         const targetDate = req.body.targetDate || todayLabel();
         const gameMode = req.body.gameMode;
-        const roundsCount = parseInt(req.body.rounds) || 8;
-        const courtsCount = parseCourtsCount(req.body.courts);
-        const partners = req.body.partners || '';
+        const settings = parseSessionSettings(req.body);
         const scoringSystem = req.body.scoringSystem === 'football' ? 'football' : 'pickleball';
         const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
 
         let scheduler: RandomDoublesScheduler | TeamScheduler;
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, targetDate,{ totalRounds: roundsCount, courtsCount, partners, rosterNames } );
+            scheduler = new TeamScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate,{ totalRounds: roundsCount, courtsCount, partners, rosterNames });
+            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
         }
 
         const data = scheduler.getScheduleData();
@@ -121,6 +144,8 @@ app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Respo
             scoringSystem,
             players: data.players,
             preferredPairs: data.preferredPairs,
+            restDeclarations: data.restDeclarations,
+            warnings: data.warnings,
             schedule: data.schedule
         };
 
@@ -147,7 +172,7 @@ app.get('/live', (req: Request, res: Response) => {
                 body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
                 .container { max-width: 1000px; margin: auto; display: flex; gap: 20px; flex-wrap: wrap; }
                 .main { flex: 2; min-width: 400px; }
-                .sidebar { flex: 1; min-width: 300px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); align-self: flex-start; position: sticky; top: 20px; }
+                .sidebar { flex: 1; min-width: 340px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); align-self: flex-start; position: sticky; top: 20px; }
                 .card { background: #fff; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                 h1, h2, h3 { color: #333; margin-top: 0; }
                 .match { border-bottom: 1px solid #eee; padding: 15px 0; display: flex; flex-direction: column; gap: 10px; }
@@ -159,6 +184,7 @@ app.get('/live', (req: Request, res: Response) => {
                 .leaderboard-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
                 .setup-form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto;}
                 ${setupFormStyles()}
+                ${leaderboardStyles()}
             </style>
         </head>
         <body>
@@ -193,7 +219,7 @@ app.get('/live', (req: Request, res: Response) => {
 
             <script>
                 ${setupFormScript()}
-
+                ${leaderboardScript()}
                 // 1. Load Data from LocalStorage
                 let tournament = JSON.parse(localStorage.getItem('pb_tournament')) || null;
                 let matchScores = JSON.parse(localStorage.getItem('pb_scores')) || {};
@@ -252,6 +278,8 @@ app.get('/live', (req: Request, res: Response) => {
                     formData.append('rounds', document.getElementById('rounds').value);
                     formData.append('courts', document.getElementById('courts').value);
                     formData.append('partners', document.getElementById('partners').value);
+                    formData.append('restsPerPlayer', document.getElementById('rests-per-player').value);
+                    formData.append('playerRests', document.getElementById('player-rests').value);
                     formData.append('scoringSystem', document.getElementById('scoring-system').value);
 
                     const res = await fetch('/api/generate', { method: 'POST', body: formData });
@@ -346,45 +374,28 @@ app.get('/live', (req: Request, res: Response) => {
 
                     const partnersDiv = document.getElementById('partners-container');
                     const preferredPairs = tournament.preferredPairs || [];
-                    partnersDiv.innerHTML = preferredPairs.length === 0 ? '' :
-                        \`<h4 style="margin: 0 0 5px; color: #4169E1;">Preferred Partnerships</h4>
-                         <div style="font-size: 14px; color: #555; margin-bottom: 15px;">
-                            \${preferredPairs.map(p => \`<div>🤝 \${p[0]} &amp; \${p[1]}</div>\`).join('')}
-                         </div>\`;
+                    const restDeclarations = tournament.restDeclarations || [];
+                    const warnings = tournament.warnings || [];
 
-                    const points = {};
-                    tournament.players.forEach(p => points[p] = 0);
+                    partnersDiv.innerHTML =
+                        (preferredPairs.length === 0 ? '' :
+                            \`<h4 style="margin: 0 0 5px; color: #4169E1;">Preferred Partnerships</h4>
+                             <div style="font-size: 14px; color: #555; margin-bottom: 15px;">
+                                \${preferredPairs.map(p => \`<div>🤝 \${p[0]} &amp; \${p[1]}</div>\`).join('')}
+                             </div>\`) +
+                        (restDeclarations.length === 0 ? '' :
+                            \`<h4 style="margin: 0 0 5px; color: #4169E1;">Rests Booked</h4>
+                             <div style="font-size: 14px; color: #555; margin-bottom: 15px;">
+                                \${restDeclarations.map(r => \`<div>😴 \${r.player}: \${r.rests}</div>\`).join('')}
+                             </div>\`) +
+                        (warnings.length === 0 ? '' :
+                            \`<div style="font-size: 13px; color: #a04000; background: #fdf3e7; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                                \${warnings.map(w => \`<div>⚠️ \${w}</div>\`).join('')}
+                             </div>\`);
 
-                    // Add up the points for every match played
-                    tournament.schedule.forEach(r => {
-                        r.matches.forEach((m, mIdx) => {
-                            if (!m.team2) return; 
-                            
-                            const matchId = 'r' + r.roundNumber + '_m' + mIdx;
-                            const s = matchScores[matchId];
-                            if (s && s.t1 !== null && s.t2 !== null) {
-                                const t1Pts = calculatePoints(s.t1, s.t2);
-                                const t2Pts = calculatePoints(s.t2, s.t1);
-                                
-                                m.team1.forEach(p => points[p] += t1Pts);
-                                m.team2.forEach(p => points[p] += t2Pts);
-                            }
-                        });
-                    });
-
-                    const lbDiv = document.getElementById('leaderboard-container');
-                    
-                    if (tournament.mode === 'teams' && tournament.teamA && tournament.teamB) {
-                        const renderTeam = (teamName, members) => {
-                            const sorted = members.map(p => ({p, pts: points[p]})).sort((a,b) => b.pts - a.pts);
-                            return \`<h4 style="margin-bottom: 5px; color: #4169E1; border-bottom: 1px solid #eee;">\${teamName} Leaderboard</h4>
-                                    \${sorted.map(x => \`<div class="leaderboard-row"><span>\${x.p}</span><b>\${x.pts}</b></div>\`).join('')}\`;
-                        };
-                        lbDiv.innerHTML = renderTeam('Team A', tournament.teamA) + '<br><br>' + renderTeam('Team B', tournament.teamB);
-                    } else {
-                        const sorted = tournament.players.map(p => ({p, pts: points[p]})).sort((a,b) => b.pts - a.pts);
-                        lbDiv.innerHTML = sorted.map(x => \`<div class="leaderboard-row"><span>\${x.p}</span><b>\${x.pts}</b></div>\`).join('');
-                    }
+                    // Wins, losses, score for/against and points all come out of
+                    // the entered scores in the leaderboard module.
+                    renderLeaderboardTables('leaderboard-container', tournament, matchScores, calculatePoints);
                 }
 
                 // Kick off app
@@ -413,20 +424,18 @@ app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response)
         const targetDate = req.body.targetDate || todayLabel();
 
         const gameMode = req.body.gameMode;
-        const roundsCount = parseInt(req.body.rounds) || 8;
-        const courtsCount = parseCourtsCount(req.body.courts);
-        const partners = req.body.partners || '';
+        const settings = parseSessionSettings(req.body);
         const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
 
         // Create the scheduler, passing in the string and the 'res' (Response) stream
         let scheduler: RandomDoublesScheduler | TeamScheduler;
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, targetDate, { totalRounds: roundsCount, courtsCount, partners, rosterNames });
+            scheduler = new TeamScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { totalRounds: roundsCount, courtsCount, partners, rosterNames });
+            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
         }
 
-        // Surface roster/partner problems as HTML before we start streaming a PDF
+        // Surface roster, partner and rest problems as HTML before we start streaming a PDF
         scheduler.validate();
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -446,7 +455,7 @@ app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response)
 // --- PDF Download Endpoint for Live Dashboard ---
 app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res: Response) => {
     try {
-        const { schedule, targetDate, mode, teamA, teamB, preferredPairs } = req.body;
+        const { schedule, targetDate, mode, teamA, teamB, preferredPairs, restDeclarations } = req.body;
 
         if (!schedule ) {
             console.error("Missing schedule or targetDate! Body received was:", req.body);
@@ -460,9 +469,11 @@ app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res:
         const description = "11 minute timed games with a 1-2 minute break between rounds.\n5 points for a win\n3 points for a draw\n1 point for a loss with >7 points\n0 points for a loss with <7 points";
         const generator = new PdfGenerator(res, `Schedule ${safeTargetDate}`, description, defaultPdfConfig);
 
-        const teamsInfo = (mode === 'teams' && teamA && teamB) ? { teamA, teamB } : undefined;
-
-        generator.generate(schedule, teamsInfo, Array.isArray(preferredPairs) ? preferredPairs : undefined);
+        generator.generate(schedule, {
+            teams: (mode === 'teams' && teamA && teamB) ? { teamA, teamB } : undefined,
+            preferredPairs: Array.isArray(preferredPairs) ? preferredPairs : undefined,
+            restDeclarations: Array.isArray(restDeclarations) ? restDeclarations : undefined
+        });
     } catch (error: any) {
         console.error(error);
         res.status(500).send('Error generating PDF');

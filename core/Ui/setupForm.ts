@@ -7,6 +7,8 @@
  * either as a plain POST (PDF page) or read by script (dashboard).
  */
 
+import { DEFAULT_RESTS_PER_PLAYER } from '../Rests';
+
 /** Selectable court counts offered in the setup form. */
 export const MIN_COURTS = 1;
 export const MAX_COURTS = 8;
@@ -113,6 +115,14 @@ export function setupFormHtml(options: SetupFormOptions): string {
             ${label('Preferred Partners (optional):')}
             <div class="field-hint">Prioritised, not guaranteed. Separate partners with &amp; and partnerships with ; or a new line. A player can have several partners.</div>
             <textarea id="partners" name="partners" rows="3" placeholder="Joe Kane &amp; Ming Tan; Joe Kane &amp; Grace Kemp; Emma Scargill &amp; Angela Wooding"></textarea>
+
+            ${label('Rests per Player:')}
+            <div class="field-hint">How many rounds each player sits out across the whole session.</div>
+            <input type="number" id="rests-per-player" name="restsPerPlayer" value="${DEFAULT_RESTS_PER_PLAYER}" min="0" />
+
+            ${label('Rests for Particular Players (optional):')}
+            <div class="field-hint">Overrides the number above for the players you name. Their rests get spread evenly across the session, never bunched together. One entry per player, separated by ; or a new line.</div>
+            <textarea id="player-rests" name="playerRests" rows="3" placeholder="Joe Kane: 3; Ming Tan: 0"></textarea>
 
             <button type="submit" style="width: 100%;">${submitLabel}</button>
         </form>
