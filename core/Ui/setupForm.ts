@@ -20,6 +20,7 @@ export function courtOptions(selected: number = DEFAULT_COURTS): string {
     for (let count = MIN_COURTS; count <= MAX_COURTS; count++) {
         options += `<option value="${count}"${count === selected ? ' selected' : ''}>${count}</option>`;
     }
+
     return options;
 }
 

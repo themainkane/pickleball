@@ -84,6 +84,7 @@ export function resolveRests(
         if (existing === undefined) {
             byPlayer.set(name, rests);
             resolved.push({ player: name, rests });
+
             return;
         }
 
@@ -114,6 +115,7 @@ function rawEntries(input: NonNullable<RestsInput>): Array<[string, unknown]> {
             .filter(entry => entry.trim() !== '')
             .map(entry => {
                 const [name, ...rest] = entry.split(COUNT_SEPARATOR);
+
                 return [String(name), rest.join('').trim()];
             });
     }
