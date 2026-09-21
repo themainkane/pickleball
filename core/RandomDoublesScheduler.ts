@@ -1,8 +1,14 @@
-import {BaseScheduler, DEFAULT_PARTNER_PRIORITY, type Match, type RoundSchedule} from "./BaseScheduler";
+import {
+    BaseScheduler,
+    DEFAULT_PARTNER_PRIORITY,
+    type Match,
+    type RoundSchedule
+} from "./BaseScheduler";
 import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
 import {Writable} from "node:stream";
 import type {PartnersInput} from "./Partners";
+import {DEFAULT_RESTS_PER_PLAYER, type RestsInput} from "./Rests";
 
 export interface DoublesConfig {
     courtsCount: number;
@@ -12,6 +18,10 @@ export interface DoublesConfig {
     partners: PartnersInput;
     /** How strongly to favour those partnerships. See DEFAULT_PARTNER_PRIORITY. */
     partnerPriority: number;
+    /** Rest counts declared for named players. See Rests. */
+    rests: RestsInput;
+    /** Rests for every player with no declared number of their own. */
+    defaultRests: number;
     /** Names typed straight into the UI. When set, the CSV is ignored. */
     rosterNames: string[];
 }
@@ -25,7 +35,7 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
         targetDateColumn: string,
         config: Partial<DoublesConfig> = {}
     ) {
-        super(csvContent, outputStream, targetDateColumn, config.partners, config.partnerPriority, config.rosterNames);
+        super(csvContent, outputStream, targetDateColumn, config);
 
         this.config = {
             courtsCount: 4,
@@ -33,6 +43,8 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
             totalRounds: 12,
             partners: [],
             partnerPriority: DEFAULT_PARTNER_PRIORITY,
+            rests: [],
+            defaultRests: DEFAULT_RESTS_PER_PLAYER,
             rosterNames: [],
             ...config
         };
@@ -43,11 +55,14 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
         const maxPossibleCourts = Math.floor(totalPlayers / this.config.playersPerCourt);
         const activeCourtsCount = Math.min(maxPossibleCourts, this.config.courtsCount);
         const playingPerRound = activeCourtsCount * this.config.playersPerCourt;
-        const numResters = totalPlayers - playingPerRound;
-        const restCounts = new Map<string, number>();
 
-        this.players.forEach(p => restCounts.set(p, 0));
-        let lastRested = new Set<string>();
+        // Plan the whole session's rests before dealing out any courts, so declared
+        // rest counts land spread across the rounds instead of bunching at the end.
+        const restPlan = this.buildRestPlan(
+            this.players,
+            totalPlayers - playingPerRound,
+            this.config.totalRounds
+        );
 
         this.resetPairHistory();
 
@@ -55,9 +70,8 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
 
         for (let round = 1; round <= this.config.totalRounds; round++) {
 
-            // --- A. Rotate the rest pile (fewest rests first) ---
-            const currentResters = this.selectResters(this.players, numResters, lastRested, restCounts);
-            lastRested = new Set(currentResters);
+            // --- A. Take this round's rest pile from the plan ---
+            const currentResters = restPlan.restersFor(round);
 
             const restingThisRound = new Set(currentResters);
             const playingThisRound = this.players.filter(p => !restingThisRound.has(p));
@@ -101,6 +115,9 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
            defaultPdfConfig
        );
 
-        generator.generate(schedule, undefined, this.preferredPairs);
+        generator.generate(schedule, {
+            preferredPairs: this.preferredPairs,
+            restDeclarations: this.restDeclarations
+        });
     }
 }

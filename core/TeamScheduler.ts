@@ -1,8 +1,14 @@
-import {BaseScheduler, DEFAULT_PARTNER_PRIORITY, type Match, type RoundSchedule} from './BaseScheduler';
+import {
+    BaseScheduler,
+    DEFAULT_PARTNER_PRIORITY,
+    type Match,
+    type RoundSchedule
+} from './BaseScheduler';
 import { Writable } from 'node:stream';
 import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
 import type {PartnersInput} from "./Partners";
+import {DEFAULT_RESTS_PER_PLAYER, type RestsInput} from "./Rests";
 
 
 export interface TeamConfig {
@@ -12,6 +18,10 @@ export interface TeamConfig {
     partners: PartnersInput;
     /** How strongly to favour those partnerships. See DEFAULT_PARTNER_PRIORITY. */
     partnerPriority: number;
+    /** Rest counts declared for named players. See Rests. */
+    rests: RestsInput;
+    /** Rests for every player with no declared number of their own. */
+    defaultRests: number;
     /** Names typed straight into the UI. When set, the CSV is ignored. */
     rosterNames: string[];
 }
@@ -27,13 +37,15 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
         targetDateColumn: string,
         config: Partial<TeamConfig> = {}
     ) {
-        super(csvContent, outputStream, targetDateColumn, config.partners, config.partnerPriority, config.rosterNames);
+        super(csvContent, outputStream, targetDateColumn, config);
 
         this.config = {
             courtsCount: 4,
             totalRounds: 6,
             partners: [],
             partnerPriority: DEFAULT_PARTNER_PRIORITY,
+            rests: [],
+            defaultRests: DEFAULT_RESTS_PER_PLAYER,
             rosterNames: [],
             ...config
         };
@@ -43,42 +55,41 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
         // 1. Divide players into two even teams, keeping preferred partners together where possible
         this.splitIntoTeams();
 
-        const restCounts = new Map<string, number>();
-        this.players.forEach(p => restCounts.set(p, 0));
+        // 2. Work out how many matches we can actually run. This depends only on
+        // the courts available and the size of the smaller team, so it holds for
+        // every round of the session.
+        const maxMatchesByPlayers = Math.min(
+            Math.floor(this.teamA.length / 2),
+            Math.floor(this.teamB.length / 2)
+        );
+        const activeMatches = Math.min(maxMatchesByPlayers, this.config.courtsCount);
 
-        let lastRestedA = new Set<string>();
-        let lastRestedB = new Set<string>();
+        // Each match needs 2 players per team
+        const playingPerTeam = activeMatches * 2;
+
+        // 3. Plan each team's rests for the whole session. A team's resters can
+        // only come from that team, so the two teams get a plan each and a
+        // player's declared number is honoured within their own team's capacity.
+        const restPlanA = this.buildRestPlan(this.teamA, this.teamA.length - playingPerTeam, this.config.totalRounds);
+        const restPlanB = this.buildRestPlan(this.teamB, this.teamB.length - playingPerTeam, this.config.totalRounds);
 
         this.resetPairHistory();
 
         const rounds: RoundSchedule[] = [];
 
         for (let round = 1; round <= this.config.totalRounds; round++) {
-            // 2. Determine how many matches we can actually run
-            // (Depends on courts available and players in the smallest team)
-            const maxMatchesByPlayers = Math.min(
-                Math.floor(this.teamA.length / 2),
-                Math.floor(this.teamB.length / 2)
-            );
-            const activeMatches = Math.min(maxMatchesByPlayers, this.config.courtsCount);
-
-            // Each match needs 2 players per team
-            const playingPerTeam = activeMatches * 2;
-
-            // 3. Select playing/resting players for this round
-            const restingA = this.selectResters(this.teamA, this.teamA.length - playingPerTeam, lastRestedA, restCounts);
+            // 4. Take this round's resters from each team's plan
+            const restingA = restPlanA.restersFor(round);
             const playingA = this.teamA.filter(p => !restingA.includes(p));
-            lastRestedA = new Set(restingA);
 
-            const restingB = this.selectResters(this.teamB, this.teamB.length - playingPerTeam, lastRestedB, restCounts);
+            const restingB = restPlanB.restersFor(round);
             const playingB = this.teamB.filter(p => !restingB.includes(p));
-            lastRestedB = new Set(restingB);
 
-            // 4. Form pairs within each team, favouring preferred partnerships
+            // 5. Form pairs within each team, favouring preferred partnerships
             const pairsA = this.shuffleArray(this.formPairs(playingA));
             const pairsB = this.shuffleArray(this.formPairs(playingB));
 
-            // 5. Create fixtures (Team A pair vs Team B pair)
+            // 6. Create fixtures (Team A pair vs Team B pair)
             const matches: Match[] = [];
             for (let i = 0; i < activeMatches; i++) {
                 matches.push({
@@ -149,7 +160,10 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             `Team Schedule ${this.targetDateColumn}`,
             this.description,
             defaultPdfConfig);
-        generator.generate(schedule, undefined, this.preferredPairs);
+        generator.generate(schedule, {
+            preferredPairs: this.preferredPairs,
+            restDeclarations: this.restDeclarations
+        });
 
 
         console.log(`Team A: ${this.teamA.join(', ')}`);

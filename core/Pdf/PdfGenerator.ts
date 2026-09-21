@@ -4,6 +4,17 @@ import { RoundSchedule } from '../BaseScheduler';
 import {PdfConfig} from "./pdfConfig";
 import {Writable} from "node:stream";
 import type {PreferredPair} from "../Partners";
+import type {RestDeclaration} from "../Rests";
+
+/** The extras printed alongside the rounds. All optional. */
+export interface PdfContentOptions {
+    /** Adds a final page listing both teams. Team mode only. */
+    teams?: { teamA: string[], teamB: string[] };
+    preferredPairs?: PreferredPair[];
+    /** Rest counts declared for named players, noted under the title. */
+    restDeclarations?: RestDeclaration[];
+}
+
 export class PdfGenerator {
     constructor(
         private outputStream: Writable,
@@ -12,15 +23,11 @@ export class PdfGenerator {
         private config: PdfConfig
     ) {}
 
-    public generate(
-        schedule: RoundSchedule[],
-        teamsInfo?: { teamA: string[], teamB: string[] },
-        preferredPairs?: PreferredPair[]
-    ): void {
+    public generate(schedule: RoundSchedule[], options: PdfContentOptions = {}): void {
         const doc = new PDFDocument({ margin: 50 });
         doc.pipe(this.outputStream);
 
-        this.writeHeader(doc, preferredPairs);
+        this.writeHeader(doc, options);
 
         schedule.forEach((round) => {
             if (!this.canFitNextRoundOnPage(doc, round)) {
@@ -30,9 +37,9 @@ export class PdfGenerator {
             this.writeRound(doc, round);
         });
 
-            if (teamsInfo) {
+            if (options.teams) {
                 doc.addPage();
-                this.writeTeamsPage(doc, teamsInfo);
+                this.writeTeamsPage(doc, options.teams);
             }
         doc.end();
     }
@@ -55,7 +62,7 @@ export class PdfGenerator {
         teamsInfo.teamB.forEach(player => doc.text(`• ${player}`));
     }
 
-    private writeHeader(doc: typeof PDFDocument, preferredPairs?: PreferredPair[]): void {
+    private writeHeader(doc: typeof PDFDocument, options: PdfContentOptions): void {
         doc.fontSize(24)
             .fillColor('#4169E1')
             .text('Edlington Pickleball Club', { align: 'center', }).moveDown(0.3);
@@ -70,12 +77,24 @@ export class PdfGenerator {
             .fillColor('#7f8c8d')
             .text(this.description, { align: 'center' });
 
-        if (preferredPairs && preferredPairs.length > 0) {
+        const preferredPairs = options.preferredPairs ?? [];
+        if (preferredPairs.length > 0) {
             doc.moveDown(0.5);
             doc.fontSize(11)
                 .fillColor('#4169E1')
                 .text(
                     `Preferred partnerships: ${preferredPairs.map(([first, second]) => `${first} & ${second}`).join(' | ')}`,
+                    { align: 'center' }
+                );
+        }
+
+        const restDeclarations = options.restDeclarations ?? [];
+        if (restDeclarations.length > 0) {
+            doc.moveDown(0.5);
+            doc.fontSize(11)
+                .fillColor('#4169E1')
+                .text(
+                    `Rests booked: ${restDeclarations.map(({ player, rests }) => `${player} x${rests}`).join(' | ')}`,
                     { align: 'center' }
                 );
         }

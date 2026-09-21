@@ -1,6 +1,16 @@
 import { parse } from 'csv-parse/sync';
 import {Writable} from "node:stream";
 import {buildPreferenceMap, parsePartners, type PartnersInput, type PreferredPair, resolvePartners} from "./Partners";
+import {
+    buildRestTargets,
+    DEFAULT_RESTS_PER_PLAYER,
+    describeRestDeclarations,
+    parseRests,
+    type RestDeclaration,
+    type RestsInput,
+    resolveRests
+} from "./Rests";
+import {RestPlan} from "./RestPlan";
 
 export interface Match {
     court: number;
@@ -12,6 +22,23 @@ export interface RoundSchedule {
     roundNumber: number
     matches: Match[];
     restPile: string[];
+}
+
+/** Everything about a session that is not the roster itself. */
+export interface SchedulerOptions {
+    /** Partnerships the scheduler should favour, in the order they were given. */
+    partners?: PartnersInput;
+    /** How strongly to favour those partnerships. See DEFAULT_PARTNER_PRIORITY. */
+    partnerPriority?: number;
+    /** Rest counts declared for named players. See Rests. */
+    rests?: RestsInput;
+    /** Rests for every player with no declared number of their own. */
+    defaultRests?: number;
+    /**
+     * Roster typed straight into the UI. When this has names the CSV is
+     * ignored entirely, so no date column is needed.
+     */
+    rosterNames?: string[];
 }
 
 /**
@@ -31,21 +58,36 @@ export abstract class BaseScheduler <TSchedule> {
     /** player -> all of their preferred partners. */
     protected preferredPartnersOf: Map<string, Set<string>> = new Map();
 
+    /** Rest counts declared for named players, resolved against the roster. */
+    protected restDeclarations: RestDeclaration[] = [];
+
+    /** player -> their declared number of rests. */
+    protected declaredRestsOf: Map<string, number> = new Map();
+
+    /** Anything the schedule could not honour, worth telling the organiser about. */
+    protected warnings: string[] = [];
+
     /** How many times each pair of players has been teamed up so far. */
     private pairCounts: Map<string, Map<string, number>> = new Map();
+
+    protected partnersInput: PartnersInput;
+    protected partnerPriority: number;
+    protected restsInput: RestsInput;
+    protected defaultRests: number;
+    protected rosterNames: string[];
 
     constructor(
         protected csvContent: string,
         protected outputStream: Writable,
         protected targetDateColumn: string,
-        protected partnersInput: PartnersInput = [],
-        protected partnerPriority: number = DEFAULT_PARTNER_PRIORITY,
-        /**
-         * Roster typed straight into the UI. When this has names the CSV is
-         * ignored entirely, so no date column is needed.
-         */
-        protected rosterNames: string[] = []
-    ) {}
+        options: SchedulerOptions = {}
+    ) {
+        this.partnersInput = options.partners ?? [];
+        this.partnerPriority = options.partnerPriority ?? DEFAULT_PARTNER_PRIORITY;
+        this.restsInput = options.rests ?? [];
+        this.defaultRests = options.defaultRests ?? DEFAULT_RESTS_PER_PLAYER;
+        this.rosterNames = options.rosterNames ?? [];
+    }
 
     public run(): void {
         try {
@@ -54,6 +96,10 @@ export abstract class BaseScheduler <TSchedule> {
 
             if (this.preferredPairs.length > 0) {
                 console.log(`Preferred partnerships: ${this.describePreferredPairs()}`);
+            }
+
+            if (this.restDeclarations.length > 0) {
+                console.log(`Declared rest counts: ${describeRestDeclarations(this.restDeclarations)}`);
             }
 
             console.log(`Found ${this.players.length} players. Generating schedule...`);
@@ -67,14 +113,36 @@ export abstract class BaseScheduler <TSchedule> {
         }
     }
 
-    public getScheduleData(): { players: string[], schedule: TSchedule, preferredPairs: PreferredPair[] } {
+    public getScheduleData(): {
+        players: string[],
+        schedule: TSchedule,
+        preferredPairs: PreferredPair[],
+        restDeclarations: RestDeclaration[],
+        warnings: string[]
+    } {
         this.loadPlayers();
         const schedule = this.generateSchedule();
-        return { players: this.players, schedule, preferredPairs: this.preferredPairs };
+        return {
+            players: this.players,
+            schedule,
+            preferredPairs: this.preferredPairs,
+            restDeclarations: this.restDeclarations,
+            warnings: this.warnings
+        };
     }
 
     public getPreferredPairs(): PreferredPair[] {
         return this.preferredPairs;
+    }
+
+    /** Rest counts declared for named players, resolved against the roster. */
+    public getRestDeclarations(): RestDeclaration[] {
+        return this.restDeclarations;
+    }
+
+    /** Anything the schedule could not honour. Empty when everything fitted. */
+    public getWarnings(): string[] {
+        return this.warnings;
     }
 
     /**
@@ -87,6 +155,7 @@ export abstract class BaseScheduler <TSchedule> {
 
     protected loadPlayers(): void {
         this.players = [];
+        this.warnings = [];
 
         if (this.rosterNames.length > 0) {
             this.loadPlayersFromNames();
@@ -117,7 +186,7 @@ export abstract class BaseScheduler <TSchedule> {
             throw new Error("Not enough players found in the CSV for the specified date.");
         }
 
-        this.applyPartners();
+        this.applyRosterSettings();
     }
 
     /** Builds the roster from names typed in directly, ignoring the CSV. */
@@ -131,7 +200,13 @@ export abstract class BaseScheduler <TSchedule> {
             throw new Error("Not enough players. Please enter at least 4 names.");
         }
 
+        this.applyRosterSettings();
+    }
+
+    /** Resolves every setting that names players against the loaded roster. */
+    protected applyRosterSettings(): void {
         this.applyPartners();
+        this.applyRests();
     }
 
     /** Resolves the partners argument against the loaded roster. */
@@ -142,6 +217,16 @@ export abstract class BaseScheduler <TSchedule> {
             name => this.formatPlayerName(name)
         );
         this.preferredPartnersOf = buildPreferenceMap(this.preferredPairs);
+    }
+
+    /** Resolves the declared rest counts against the loaded roster. */
+    protected applyRests(): void {
+        this.restDeclarations = resolveRests(
+            parseRests(this.restsInput),
+            this.players,
+            name => this.formatPlayerName(name)
+        );
+        this.declaredRestsOf = buildRestTargets(this.restDeclarations);
     }
 
     protected describePreferredPairs(): string {
@@ -255,31 +340,43 @@ export abstract class BaseScheduler <TSchedule> {
     // --- Rest rotation ----------------------------------------------------
 
     /**
-     * Picks who sits out this round: fewest rests so far first, avoiding anyone
-     * who rested last round, with a random tiebreak. Increments restCounts for
-     * the chosen players.
+     * Plans every round's rest pile for a pool of players in one go.
+     *
+     * Doing it up front is what lets a declared number of rests be honoured and
+     * spread across the session. Picking resters a round at a time cannot: by the
+     * time it notices someone is short, only the closing rounds are left.
+     *
+     * Call once per pool. Random doubles has a single pool, team mode has one per
+     * team, because a team's resters can only come from that team.
      */
-    protected selectResters(
-        pool: string[],
-        numResters: number,
-        lastRested: Set<string>,
-        restCounts: Map<string, number>
-    ): string[] {
-        if (numResters <= 0) {
-            return [];
-        }
+    protected buildRestPlan(pool: string[], slotsPerRound: number, totalRounds: number): RestPlan {
+        const plan = new RestPlan({
+            pool,
+            totalRounds,
+            slotsPerRound,
+            declaredRests: this.declaredRestsOf,
+            defaultRests: this.defaultRests,
+            shuffle: items => this.shuffleArray(items)
+        });
 
-        const byFairness = this.shuffleArray(pool)
-            .sort((a, b) => (restCounts.get(a) ?? 0) - (restCounts.get(b) ?? 0));
+        this.recordUnmetRests(plan);
 
-        const resters = [
-            ...byFairness.filter(player => !lastRested.has(player)),
-            ...byFairness.filter(player => lastRested.has(player))
-        ].slice(0, numResters);
+        return plan;
+    }
 
-        resters.forEach(player => restCounts.set(player, (restCounts.get(player) ?? 0) + 1));
-
-        return resters;
+    /**
+     * Notes any declared number the courts would not allow. The usual cause is
+     * the session simply not having that many rests to give out: the courts fix
+     * how many players sit out each round, so there are exactly
+     * `rounds x resters per round` rests to share.
+     */
+    private recordUnmetRests(plan: RestPlan): void {
+        plan.unmetDeclarations().forEach(({ player, declared, planned }) => {
+            this.warnings.push(
+                `${player} asked for ${declared} ${rounds(declared)} of rest but the schedule could only give ${planned}. ` +
+                `With this many players and courts there are only so many rests to go round.`
+            );
+        });
     }
 
     protected shuffleArray<T>(array: T[]): T[] {
@@ -295,3 +392,8 @@ export abstract class BaseScheduler <TSchedule> {
     protected abstract createPDF(schedule: TSchedule): void;
 
 }
+
+function rounds(count: number): string {
+    return count === 1 ? 'round' : 'rounds';
+}
+
