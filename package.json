@@ -1,11 +1,16 @@
 {
   "name": "pickleball",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "",
   "main": "index.js",
+  "workspaces": [
+    "server"
+  ],
   "scripts": {
     "start": "tsx server.ts",
+    "dev:server": "npm -w @pickleball/server run dev",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "tsx --test core/*.test.ts"
@@ -23,11 +28,11 @@
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.9.3",
+    "@types/node": "^25.9.6",
     "@types/pdfkit": "^0.17.6",
     "eslint": "^10.5.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1"
   }

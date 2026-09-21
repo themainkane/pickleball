@@ -23,25 +23,31 @@ export function resolvePlayerName(
     const formattedTarget = normalise(formatPlayerName(name));
 
     const exact = players.filter(player => normalise(player) === target || normalise(player) === formattedTarget);
+
     if (exact.length === 1) {
         return exact[0]!;
     }
+
     if (exact.length > 1) {
         throw ambiguous(label, name, exact);
     }
 
     const prefixed = players.filter(player => normalise(player).startsWith(target));
+
     if (prefixed.length === 1) {
         return prefixed[0]!;
     }
+
     if (prefixed.length > 1) {
         throw ambiguous(label, name, prefixed);
     }
 
     const firstNameMatches = players.filter(player => firstNameOf(player) === firstNameOf(name));
+
     if (firstNameMatches.length === 1) {
         return firstNameMatches[0]!;
     }
+
     if (firstNameMatches.length > 1) {
         throw ambiguous(label, name, firstNameMatches);
     }

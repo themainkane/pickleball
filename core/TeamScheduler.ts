@@ -130,10 +130,13 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
         placementOrder.forEach(player => {
             if (this.teamA.length >= capacityA) {
                 this.teamB.push(player);
+
                 return;
             }
+
             if (this.teamB.length >= capacityB) {
                 this.teamA.push(player);
+
                 return;
             }
 

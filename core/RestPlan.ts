@@ -120,6 +120,7 @@ export class RestPlan {
             }
 
             const planned = this.restsFor(player);
+
             if (planned !== declared) {
                 unmet.push({ player, declared, planned });
             }

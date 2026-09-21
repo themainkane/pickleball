@@ -40,6 +40,7 @@ export class PdfGenerator {
                 doc.addPage();
                 this.writeTeamsPage(doc, options.teams);
             }
+
         doc.end();
     }
 
@@ -77,6 +78,7 @@ export class PdfGenerator {
             .text(this.description, { align: 'center' });
 
         const preferredPairs = options.preferredPairs ?? [];
+
         if (preferredPairs.length > 0) {
             doc.moveDown(0.5);
             doc.fontSize(11)
@@ -88,6 +90,7 @@ export class PdfGenerator {
         }
 
         const restDeclarations = options.restDeclarations ?? [];
+
         if (restDeclarations.length > 0) {
             doc.moveDown(0.5);
             doc.fontSize(11)
@@ -137,6 +140,7 @@ export class PdfGenerator {
         const perRow = Math.floor(
             (usableWidth + this.config.courtSpacing) / (this.config.courtWidth + this.config.courtSpacing)
         );
+
         return Math.max(1, perRow);
     }
 
@@ -192,6 +196,7 @@ export class PdfGenerator {
     /** Round heading + however many rows of courts it needs + the rest pile line. */
     private estimateRoundHeight(doc: typeof PDFDocument, round: RoundSchedule): number {
         const rows = Math.max(1, Math.ceil(round.matches.length / this.courtsPerRow(doc)));
+
         return 60 + rows * (this.config.courtHeight + this.config.courtRowSpacing);
     }
 }
