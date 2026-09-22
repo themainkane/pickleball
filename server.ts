@@ -182,6 +182,7 @@ app.get('/live', (req: Request, res: Response) => {
                 button { background: #4169E1; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px;}
                 button:hover { background: #3154b3; }
                 .leaderboard-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+                .rest-pile { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ddd; font-size: 13px; color: #666; }
                 .setup-form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto;}
                 ${setupFormStyles()}
                 ${leaderboardStyles()}
@@ -318,6 +319,15 @@ app.get('/live', (req: Request, res: Response) => {
                 }
 
                 // 5. Render the UI
+                /** Anyone off court for a round is resting, whatever the schedule says. */
+                function restPileText(round) {
+                    const onCourt = round.matches.reduce((playing, match) =>
+                        playing.concat(match.team1 || [], match.team2 || []), []);
+                    const resting = tournament.players.filter(player => !onCourt.includes(player));
+
+                    return resting.length > 0 ? resting.join(', ') : 'Nobody, everyone is on court';
+                }
+
                 function renderApp() {
                     if(!tournament) {
                         document.getElementById('setup-area').style.display = 'block';
@@ -360,6 +370,7 @@ app.get('/live', (req: Request, res: Response) => {
                                     </div>
                                 \`;
                             }).join('')}
+                            <div class="rest-pile">😴 <b>Rest pile:</b> \${restPileText(r)}</div>
                         </div>
                     \`).join('');
 
