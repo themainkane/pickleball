@@ -16,6 +16,10 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
+      parserOptions: {
+        // Stop the parser guessing. `.mjs` so import.meta is available.
+        tsconfigRootDir: import.meta.dirname,
+      },
       globals: globals.browser,
     },
   },

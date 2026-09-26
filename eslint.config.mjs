@@ -6,9 +6,9 @@ export default tseslint.config(
     eslint.configs.recommended,
     // Base TS recommended rules
     ...tseslint.configs.recommended,
+    {ignores: ['web/**','node_modules/', 'dist/', 'build/'],},
     {
         // Ignore build folders or compiled outputs
-        ignores: ['node_modules/', 'dist/', 'build/'],
         rules: {
             // `_foo` means "deliberately unused"; rest-siblings are how we drop fields
             // like passwordHash: `const { passwordHash: _hash, ...safe } = user`
