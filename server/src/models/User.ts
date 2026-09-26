@@ -1,4 +1,4 @@
-import { Schema, model, InferSchemaType, HydratedDocument } from 'mongoose';
+import { Schema, model, InferSchemaType, HydratedDocument, Types } from 'mongoose';
 
 const userSchema = new Schema(
     {
@@ -16,6 +16,6 @@ const userSchema = new Schema(
 
 export type User = InferSchemaType<typeof userSchema>;
 export type UserDoc = HydratedDocument<User>;
-export type UserLean = User & { _id: Schema.Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type UserLean = User & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
 
 export const UserModel = model('User', userSchema);

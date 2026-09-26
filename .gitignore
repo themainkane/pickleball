@@ -4,6 +4,8 @@ node_modules/
 # Build outputs
 *.js
 *.js.map
+# Js exclusions
+!web/eslint.config.js
 
 # Generated PDFs
 *.pdf
@@ -26,3 +28,4 @@ player-list/
 #env
 .env
 .env.local
+server/.env
