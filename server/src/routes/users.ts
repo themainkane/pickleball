@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { userService } from '../services/UserService';
-import { publicUser } from '../steralizers/user';
+import { publicUser } from '../steralizers/userSerializer';
 
 export const usersRouter = Router();
 

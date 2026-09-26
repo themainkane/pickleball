@@ -6,13 +6,14 @@
   "description": "",
   "main": "index.js",
   "workspaces": [
-    "server"
+    "server", "web"
   ],
   "scripts": {
     "start": "tsx server.ts",
     "dev:server": "npm -w @pickleball/server run dev",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "dev:web": "npm -w @pickleball/web run dev",
     "test": "tsx --test core/*.test.ts"
   },
   "keywords": [],

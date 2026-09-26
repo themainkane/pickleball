@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
 import { BaseService } from './BaseService';
 import { UserModel, type User } from '../models/User';
+import {randomBytes} from "node:crypto";
 
 const SALT_ROUNDS = 12;
 
@@ -48,15 +49,22 @@ export class UserService extends BaseService<User> {
         return this.model.findOne({ email: email.toLowerCase() }).lean().exec();
     }
 
-    /** login check — needs an explicit select because the hash is excluded by default */
+
     async verifyCredentials(email: string, password: string) {
+        const dummyHash = bcrypt.hashSync(randomBytes(32).toString('hex'), SALT_ROUNDS);
         const user = await this.model
             .findOne({ email: email.toLowerCase() })
+            // hash always excluded, explicitly select it
             .select('+passwordHash')
             .lean()
             .exec();
 
-        if (!user) return null;
+        if (!user) {
+            // redundant compare, for timing security.
+            await bcrypt.compare(password, dummyHash );
+
+            return null;
+        }
 
         const validPassword = await bcrypt.compare(password, user.passwordHash);
 

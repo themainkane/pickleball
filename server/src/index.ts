@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { env } from './config/env';
 import { connectDb, disconnectDb } from './db/connect';
 import { usersRouter } from './routes/users';
+import {authRouter} from "./routes/auth";
 
 async function main() {
     await connectDb();
@@ -18,8 +19,8 @@ async function main() {
         });
     });
 
-    // TODO: no auth on these yet — see note below
     app.use('/users', usersRouter);
+    app.use('/auth', authRouter);
 
     app.use((_req, res) => {
         res.status(404).json({ error: 'Not found' });
