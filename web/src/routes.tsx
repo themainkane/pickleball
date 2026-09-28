@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { LoginPage } from './features/auth/Login';
 import { ProtectedLayout } from './layouts/ProtectedLayout';
-import {Dashboard} from "./layouts/dashboard/Dashboard.tsx";
+import {Dashboard} from "./features/dashboard/Dashboard.tsx";
 
 export const router = createBrowserRouter([
     { path: '/login', element: <LoginPage /> },

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { listUsers, type AuthUser } from '../../lib/api';
-import { useAuth } from '../../context/AuthContext';
-import { Page } from '../../ui/Page';
+import { listUsers, type AuthUser } from '../../lib/api.ts';
+import { useAuth } from '../../context/AuthContext.tsx';
+import { Page } from '../../ui/Page.tsx';
 
 export function Dashboard() {
     const { token, user, signOut } = useAuth();
