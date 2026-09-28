@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { userService } from '../services/UserService';
 import { publicUser } from '../steralizers/userSerializer';
+import {isDuplicateKey} from "./routeHelpers";
 
 export const usersRouter = Router();
 
@@ -19,11 +20,6 @@ const listQuery = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional(),
     skip: z.coerce.number().int().min(0).optional(),
 });
-
-/** mongo duplicate-key error — here it means the unique email is taken */
-function isDuplicateKey(err: unknown) {
-    return typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000;
-}
 
 /** POST /users — create */
 usersRouter.post('/', async (req, res) => {
