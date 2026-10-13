@@ -35,6 +35,16 @@ function parseDefaultRests(value: unknown): number {
     return parsed;
 }
 
+/**
+ * The 'Ladies First' toggle. Anything the form never sent defaults to on, and
+ * the form always sends 'on' or 'off' so an unticked box is not read as missing.
+ */
+function parseLadiesFirst(value: unknown): boolean {
+    if (value === undefined || value === null || value === '') return true;
+    const text = String(value).trim().toLowerCase();
+    return text === 'on' || text === 'true' || text === '1' || text === 'yes';
+}
+
 /** The session settings both the PDF and the API routes read off the form. */
 function parseSessionSettings(body: Record<string, unknown>) {
     return {
@@ -42,7 +52,9 @@ function parseSessionSettings(body: Record<string, unknown>) {
         courtsCount: parseCourtsCount(body.courts),
         partners: formField(body.partners),
         rests: formField(body.playerRests),
-        defaultRests: parseDefaultRests(body.restsPerPlayer)
+        defaultRests: parseDefaultRests(body.restsPerPlayer),
+        genders: formField(body.playerGenders),
+        ladiesFirst: parseLadiesFirst(body.ladiesFirst)
     };
 }
 
@@ -271,6 +283,7 @@ app.get('/live', (req: Request, res: Response) => {
                     const formData = new FormData();
                     if (manualNamesActive()) {
                         formData.append('playerNames', rosterNamesText());
+                        formData.append('playerGenders', rosterGendersText());
                     } else {
                         formData.append('rosterFile', document.getElementById('csv-file').files[0]);
                         formData.append('targetDate', document.getElementById('target-date').value);
@@ -281,6 +294,7 @@ app.get('/live', (req: Request, res: Response) => {
                     formData.append('partners', document.getElementById('partners').value);
                     formData.append('restsPerPlayer', document.getElementById('rests-per-player').value);
                     formData.append('playerRests', document.getElementById('player-rests').value);
+                    formData.append('ladiesFirst', ladiesFirstEnabled() ? 'on' : 'off');
                     formData.append('scoringSystem', document.getElementById('scoring-system').value);
 
                     const res = await fetch('/api/generate', { method: 'POST', body: formData });

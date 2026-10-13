@@ -1,5 +1,6 @@
 import {
     BaseScheduler,
+    DEFAULT_GENDER_PRIORITY,
     DEFAULT_PARTNER_PRIORITY,
     type Match,
     type RoundSchedule
@@ -9,6 +10,7 @@ import {PdfGenerator} from "./Pdf/PdfGenerator";
 import {defaultPdfConfig} from "./Pdf/pdfConfig";
 import type {PartnersInput} from "./Partners";
 import {DEFAULT_RESTS_PER_PLAYER, type RestsInput} from "./Rests";
+import {type GendersInput, WOMEN_PER_LADIES_PAIR} from "./Genders";
 
 
 export interface TeamConfig {
@@ -22,6 +24,12 @@ export interface TeamConfig {
     rests: RestsInput;
     /** Rests for every player with no declared number of their own. */
     defaultRests: number;
+    /** Genders declared for named players. Only shapes fixtures. See Genders. */
+    genders: GendersInput;
+    /** The 'Ladies First' toggle. Off means gender plays no part. */
+    ladiesFirst: boolean;
+    /** How strongly to favour mixed pairs. See DEFAULT_GENDER_PRIORITY. */
+    genderPriority: number;
     /** Names typed straight into the UI. When set, the CSV is ignored. */
     rosterNames: string[];
 }
@@ -46,6 +54,9 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             partnerPriority: DEFAULT_PARTNER_PRIORITY,
             rests: [],
             defaultRests: DEFAULT_RESTS_PER_PLAYER,
+            genders: [],
+            ladiesFirst: true,
+            genderPriority: DEFAULT_GENDER_PRIORITY,
             rosterNames: [],
             ...config
         };
@@ -75,6 +86,11 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
 
         this.resetPairHistory();
 
+        // Rounds that owe a ladies fixture. In team mode that needs two women
+        // playing on each side, so a round short of them passes the debt on.
+        const ladiesFixtureRounds = this.ladiesFixtureRounds(this.config.totalRounds);
+        let ladiesFixturesOwed = 0;
+
         const rounds: RoundSchedule[] = [];
 
         for (let round = 1; round <= this.config.totalRounds; round++) {
@@ -85,19 +101,40 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             const restingB = restPlanB.restersFor(round);
             const playingB = this.teamB.filter(p => !restingB.includes(p));
 
-            // 5. Form pairs within each team, favouring preferred partnerships
-            const pairsA = this.shuffleArray(this.formPairs(playingA));
-            const pairsB = this.shuffleArray(this.formPairs(playingB));
-
-            // 6. Create fixtures (Team A pair vs Team B pair)
-            const matches: Match[] = [];
-            for (let i = 0; i < activeMatches; i++) {
-                matches.push({
-                    court: i + 1,
-                    team1: pairsA[i]!,
-                    team2: pairsB[i]!
-                });
+            // 5. Form pairs within each team, favouring preferred partnerships,
+            // then mixed pairs, with a ladies pair set aside on each side in the
+            // rounds that owe a ladies fixture.
+            if (ladiesFixtureRounds.has(round)) {
+                ladiesFixturesOwed++;
             }
+
+            const reserveLadiesFixture = ladiesFixturesOwed > 0
+                && activeMatches > 0
+                && this.womenIn(playingA).length >= WOMEN_PER_LADIES_PAIR
+                && this.womenIn(playingB).length >= WOMEN_PER_LADIES_PAIR;
+
+            if (reserveLadiesFixture) {
+                ladiesFixturesOwed--;
+            }
+
+            const ladiesPairsPerTeam = reserveLadiesFixture ? 1 : 0;
+
+            // Both sides ordered the same way, so fixture n faces like with like.
+            const pairsA = this.orderPairsByMakeup(this.formRoundPairs(playingA, ladiesPairsPerTeam));
+            const pairsB = this.orderPairsByMakeup(this.formRoundPairs(playingB, ladiesPairsPerTeam));
+
+            // 6. Create fixtures (Team A pair vs Team B pair), shuffled so no
+            // fixture camps on the same court every round.
+            const fixtures: Array<[[string, string], [string, string]]> = [];
+            for (let i = 0; i < activeMatches; i++) {
+                fixtures.push([pairsA[i]!, pairsB[i]!]);
+            }
+
+            const matches: Match[] = this.shuffleArray(fixtures).map(([team1, team2], index) => ({
+                court: index + 1,
+                team1,
+                team2
+            }));
 
             rounds.push({
                 roundNumber: round,
@@ -116,6 +153,11 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
      * joins whichever team already holds more of their preferred partners, so
      * partnerships land on the same team where the size limit allows it. A player
      * with partners on both sides simply follows one of them.
+     *
+     * With nothing to follow, the player joins the team holding fewer of their
+     * own gender. That keeps the women spread across both sides, which is what
+     * lets each team field mixed pairs and puts a ladies pair on each side of a
+     * ladies fixture.
      */
     private splitIntoTeams(): void {
         const capacityA = Math.ceil(this.players.length / 2);
@@ -140,15 +182,23 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
             const pullToA = this.countPreferredPartnersIn(player, this.teamA);
             const pullToB = this.countPreferredPartnersIn(player, this.teamB);
 
-            if (pullToA > pullToB) {
-                this.teamA.push(player);
-            } else if (pullToB > pullToA) {
-                this.teamB.push(player);
-            } else if (this.teamA.length <= this.teamB.length) {
-                this.teamA.push(player);
-            } else {
-                this.teamB.push(player);
+            if (pullToA !== pullToB) {
+                (pullToA > pullToB ? this.teamA : this.teamB).push(player);
+                return;
             }
+
+            // Nothing to follow: level the genders up, so both teams can field
+            // mixed pairs and a ladies fixture has women on each side. Team sizes
+            // are capped above, so this cannot run the teams lopsided.
+            const sameGenderInA = this.countSameGenderIn(player, this.teamA);
+            const sameGenderInB = this.countSameGenderIn(player, this.teamB);
+
+            if (sameGenderInA !== sameGenderInB) {
+                (sameGenderInA < sameGenderInB ? this.teamA : this.teamB).push(player);
+                return;
+            }
+
+            (this.teamA.length <= this.teamB.length ? this.teamA : this.teamB).push(player);
         });
     }
 
