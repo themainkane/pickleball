@@ -1,5 +1,6 @@
 import {
     BaseScheduler,
+    DEFAULT_GENDER_PRIORITY,
     DEFAULT_PARTNER_PRIORITY,
     type Match,
     type RoundSchedule
@@ -9,6 +10,7 @@ import {defaultPdfConfig} from "./Pdf/pdfConfig";
 import {Writable} from "node:stream";
 import type {PartnersInput} from "./Partners";
 import {DEFAULT_RESTS_PER_PLAYER, type RestsInput} from "./Rests";
+import {type GendersInput, LADIES_FIXTURE_MIN_WOMEN, LADIES_FIXTURE_PAIRS} from "./Genders";
 
 export interface DoublesConfig {
     courtsCount: number;
@@ -22,6 +24,12 @@ export interface DoublesConfig {
     rests: RestsInput;
     /** Rests for every player with no declared number of their own. */
     defaultRests: number;
+    /** Genders declared for named players. Only shapes fixtures. See Genders. */
+    genders: GendersInput;
+    /** The 'Ladies First' toggle. Off means gender plays no part. */
+    ladiesFirst: boolean;
+    /** How strongly to favour mixed pairs. See DEFAULT_GENDER_PRIORITY. */
+    genderPriority: number;
     /** Names typed straight into the UI. When set, the CSV is ignored. */
     rosterNames: string[];
 }
@@ -45,6 +53,9 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
             partnerPriority: DEFAULT_PARTNER_PRIORITY,
             rests: [],
             defaultRests: DEFAULT_RESTS_PER_PLAYER,
+            genders: [],
+            ladiesFirst: true,
+            genderPriority: DEFAULT_GENDER_PRIORITY,
             rosterNames: [],
             ...config
         };
@@ -66,6 +77,11 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
 
         this.resetPairHistory();
 
+        // Rounds that owe a ladies fixture. A round where the women are mostly
+        // resting cannot host one, so the debt carries to the next round that can.
+        const ladiesFixtureRounds = this.ladiesFixtureRounds(this.config.totalRounds);
+        let ladiesFixturesOwed = 0;
+
         const rounds: RoundSchedule[] = [];
 
         for (let round = 1; round <= this.config.totalRounds; round++) {
@@ -76,11 +92,27 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
             const restingThisRound = new Set(currentResters);
             const playingThisRound = this.players.filter(p => !restingThisRound.has(p));
 
-            // --- B. Team everyone up, favouring preferred partnerships ---
-            const teams = this.formPairs(playingThisRound);
+            // --- B. Team everyone up, favouring preferred partnerships, then
+            // mixed pairs, with a ladies fixture set aside in the rounds that owe one ---
+            if (ladiesFixtureRounds.has(round)) {
+                ladiesFixturesOwed++;
+            }
 
-            // Shuffle so the same teams don't camp on the same court every round.
-            const orderedTeams = this.shuffleArray(teams);
+            const reserveLadiesFixture = ladiesFixturesOwed > 0
+                && this.womenIn(playingThisRound).length >= LADIES_FIXTURE_MIN_WOMEN;
+
+            if (reserveLadiesFixture) {
+                ladiesFixturesOwed--;
+            }
+
+            const teams = this.formRoundPairs(
+                playingThisRound,
+                reserveLadiesFixture ? LADIES_FIXTURE_PAIRS : 0
+            );
+
+            // Order the teams so each court faces like with like, and shuffle the
+            // fixtures so the same teams don't camp on the same court every round.
+            const orderedTeams = this.orderTeamsIntoFixtures(teams);
 
             const matches: Match[] = [];
             for (let i = 0; i < activeCourtsCount; i++) {

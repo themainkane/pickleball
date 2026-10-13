@@ -49,6 +49,9 @@ export function setupFormStyles(): string {
         .setup-form .field-hint { font-size: 12px; color: #666; margin-bottom: 8px; }
         .setup-form .name-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
         .setup-form .name-row input[type="text"] { margin-bottom: 0; }
+        .setup-form .name-row select { width: 70px; margin-bottom: 0; }
+        .setup-form .toggle-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 15px; }
+        .setup-form .toggle-row input[type="checkbox"] { margin: 3px 0 0; width: 18px; height: 18px; }
         .setup-form .secondary-btn { background: #eee; color: #333; font-size: 14px; padding: 8px 12px; margin-top: 0; white-space: nowrap; }
         .setup-form .secondary-btn:hover { background: #ddd; }
         .setup-form .add-name-btn { padding: 6px 14px; font-size: 18px; line-height: 1; margin-top: 0; }
@@ -69,6 +72,10 @@ export function setupFormHtml(options: SetupFormOptions): string {
         <form id="${formId}"${formAttributes}>
             <!-- Filled in from the name boxes when the form is submitted. -->
             <input type="hidden" id="player-names" name="playerNames" />
+            <!-- Filled in from the M/F dropdowns. Only used to shape fixtures. -->
+            <input type="hidden" id="player-genders" name="playerGenders" />
+            <!-- Filled in from the Ladies First checkbox. -->
+            <input type="hidden" id="ladies-first-value" name="ladiesFirst" value="on" />
 
             ${label('Players:')}
             <div class="roster-row">
@@ -81,10 +88,11 @@ export function setupFormHtml(options: SetupFormOptions): string {
             <div id="csv-date-field">
                 <label for="target-date"><b>Target Date Column (e.g. 22/06/26):</b></label>
                 <input type="text" id="target-date" name="targetDate" placeholder="DD/MM/YY" />
+                <div class="field-hint" style="margin-top: -10px;">Optional: add a Gender column beside the date, or write it after a name as "Cherie Marais (F)". Only M or F is read.</div>
             </div>
 
             <div id="manual-names" style="display: none;">
-                <div class="field-hint">One box per player, at least 4. Press Enter or + to add another.</div>
+                <div class="field-hint">One box per player, at least 4. Press Enter or + to add another. The M/F dropdown is optional and only used to mix up the fixtures.</div>
                 <div id="name-rows"></div>
                 <button type="button" class="add-name-btn" onclick="addNameRow()" aria-label="Add another player">+</button>
             </div>
@@ -124,6 +132,13 @@ export function setupFormHtml(options: SetupFormOptions): string {
             <div class="field-hint">Overrides the number above for the players you name. Their rests get spread evenly across the session, never bunched together. One entry per player, separated by ; or a new line.</div>
             <textarea id="player-rests" name="playerRests" rows="3" placeholder="Joe Kane: 3; Ming Tan: 0"></textarea>
 
+            ${label('Ladies First:')}
+            <div class="toggle-row">
+                <input type="checkbox" id="ladies-first" checked />
+                <label for="ladies-first" style="margin: 0;">Use gender to shape the fixtures</label>
+            </div>
+            <div class="field-hint" style="margin-top: -8px;">Leans towards mixed pairs and courts where both pairs are made up the same way, instead of two men against two women. With four or more women on the roster, a couple of rounds set a ladies fixture aside. Rests and preferred partners still come first, so it is a nudge, not a rule.</div>
+
             <button type="submit" style="width: 100%;">${submitLabel}</button>
         </form>
     `;
@@ -136,6 +151,8 @@ export function setupFormHtml(options: SetupFormOptions): string {
  * Exposes to the page:
  *  - SCORING_SYSTEMS: point rules and their plain English guides
  *  - collectManualNames() / rosterNamesText(): the typed names, top to bottom
+ *  - rosterGendersText(): the M/F dropdowns as "name: gender" lines
+ *  - ladiesFirstEnabled(): whether gender should shape the fixtures
  *  - rosterIsValid(): warns when fewer than 4 names were typed
  *  - manualNamesActive(): whether the user chose to type names
  */
@@ -175,7 +192,7 @@ export function setupFormScript(): string {
                 .filter(name => name !== '');
         }
 
-        /** Adds one name box with its own edit and remove buttons. */
+        /** Adds one name box with its own gender dropdown, edit and remove buttons. */
         function addNameRow(value) {
             const row = document.createElement('div');
             row.className = 'name-row';
@@ -191,6 +208,18 @@ export function setupFormScript(): string {
                     event.preventDefault();
                     addNameRow();
                 }
+            });
+
+            // Only ever used to shape the fixtures, and left out of every output.
+            const gender = document.createElement('select');
+            gender.className = 'gender-select';
+            gender.title = 'Gender, used only to mix up the fixtures';
+            gender.setAttribute('aria-label', 'Gender');
+            [['', '–'], ['M', 'M'], ['F', 'F']].forEach(([optionValue, text]) => {
+                const option = document.createElement('option');
+                option.value = optionValue;
+                option.textContent = text;
+                gender.appendChild(option);
             });
 
             const editButton = document.createElement('button');
@@ -218,7 +247,7 @@ export function setupFormScript(): string {
                 }
             });
 
-            row.append(input, editButton, removeButton);
+            row.append(input, gender, editButton, removeButton);
             document.getElementById('name-rows').appendChild(row);
             input.focus();
         }
@@ -256,6 +285,28 @@ export function setupFormScript(): string {
             return collectManualNames().join('\\n');
         }
 
+        /**
+         * The gender dropdowns as "name: gender" lines, skipping anyone left on
+         * the blank option. Gender only shapes the fixtures, so none of this is
+         * needed for a schedule to be generated.
+         */
+        function rosterGendersText() {
+            return Array.from(document.querySelectorAll('#name-rows .name-row'))
+                .map(row => ({
+                    name: row.querySelector('input[type="text"]').value.trim(),
+                    gender: row.querySelector('select.gender-select').value
+                }))
+                .filter(entry => entry.name !== '' && entry.gender !== '')
+                .map(entry => entry.name + ': ' + entry.gender)
+                .join('\\n');
+        }
+
+        /** Whether gender should shape the fixtures at all. */
+        function ladiesFirstEnabled() {
+            const toggle = document.getElementById('ladies-first');
+            return toggle ? toggle.checked : true;
+        }
+
         /** Warns and returns false when a typed roster is too short. */
         function rosterIsValid() {
             if (manualNames && collectManualNames().length < 4) {
@@ -280,6 +331,8 @@ export function setupFormScript(): string {
             if (options && options.plainPost) {
                 form.addEventListener('submit', event => {
                     document.getElementById('player-names').value = rosterNamesText();
+                    document.getElementById('player-genders').value = rosterGendersText();
+                    document.getElementById('ladies-first-value').value = ladiesFirstEnabled() ? 'on' : 'off';
                     if (!rosterIsValid()) event.preventDefault();
                 });
             }

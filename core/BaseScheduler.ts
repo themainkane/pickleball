@@ -11,6 +11,21 @@ import {
     resolveRests
 } from "./Rests";
 import {RestPlan} from "./RestPlan";
+import {
+    findGenderColumn,
+    type Gender,
+    type GendersInput,
+    LADIES_FIXTURE_MIN_WOMEN,
+    LADIES_FIXTURES_PER_SESSION,
+    MAKEUP_ORDER,
+    makeupRank,
+    pairMakeup,
+    type PairMakeup,
+    parseGenders,
+    readGender,
+    resolveGenders,
+    splitNameAndGender
+} from "./Genders";
 
 export interface Match {
     court: number;
@@ -35,6 +50,18 @@ export interface SchedulerOptions {
     /** Rests for every player with no declared number of their own. */
     defaultRests?: number;
     /**
+     * Genders declared for named players. Only ever used to shape the fixtures,
+     * never reported. See Genders.
+     */
+    genders?: GendersInput;
+    /**
+     * Whether to let gender shape the fixtures at all: the 'Ladies First'
+     * toggle. On by default, and off means gender is ignored entirely.
+     */
+    ladiesFirst?: boolean;
+    /** How strongly to favour mixed pairs. See DEFAULT_GENDER_PRIORITY. */
+    genderPriority?: number;
+    /**
      * Roster typed straight into the UI. When this has names the CSV is
      * ignored entirely, so no date column is needed.
      */
@@ -47,7 +74,16 @@ export interface SchedulerOptions {
  * played together this many times, so with the default a preference is a strong
  * pull without ever being an absolute lock.
  */
-export const DEFAULT_PARTNER_PRIORITY = 10;
+export const DEFAULT_PARTNER_PRIORITY = 3;
+
+/**
+ * How strongly a mixed pair outweighs the "don't repeat pairings" rule.
+ *
+ * Deliberately far below DEFAULT_PARTNER_PRIORITY: a preferred partnership of
+ * two men still beats a mixed pair, and one round together is enough to cancel
+ * the mixed bonus out, so nobody gets locked into mixed all evening.
+ */
+export const DEFAULT_GENDER_PRIORITY = 1;
 
 export abstract class BaseScheduler <TSchedule> {
     protected players: string[] =[]
@@ -64,6 +100,18 @@ export abstract class BaseScheduler <TSchedule> {
     /** player -> their declared number of rests. */
     protected declaredRestsOf: Map<string, number> = new Map();
 
+    /**
+     * player -> their gender, from the roster or the form. Used to shape the
+     * fixtures and nothing else: it is never reported or written out.
+     */
+    protected genderOf: Map<string, Gender> = new Map();
+
+    /**
+     * Genders carried by the roster itself. Kept by row as the roster is read,
+     * so two players with the same name cannot be mixed up by name matching.
+     */
+    private rosterGenderOf: Map<string, Gender> = new Map();
+
     /** Anything the schedule could not honour, worth telling the organiser about. */
     protected warnings: string[] = [];
 
@@ -74,6 +122,10 @@ export abstract class BaseScheduler <TSchedule> {
     protected partnerPriority: number;
     protected restsInput: RestsInput;
     protected defaultRests: number;
+    protected gendersInput: GendersInput;
+    protected genderPriority: number;
+    /** The 'Ladies First' toggle. Off means gender plays no part at all. */
+    protected ladiesFirst: boolean;
     protected rosterNames: string[];
 
     constructor(
@@ -86,6 +138,9 @@ export abstract class BaseScheduler <TSchedule> {
         this.partnerPriority = options.partnerPriority ?? DEFAULT_PARTNER_PRIORITY;
         this.restsInput = options.rests ?? [];
         this.defaultRests = options.defaultRests ?? DEFAULT_RESTS_PER_PLAYER;
+        this.gendersInput = options.genders ?? [];
+        this.genderPriority = options.genderPriority ?? DEFAULT_GENDER_PRIORITY;
+        this.ladiesFirst = options.ladiesFirst ?? true;
         this.rosterNames = options.rosterNames ?? [];
     }
 
@@ -156,6 +211,7 @@ export abstract class BaseScheduler <TSchedule> {
     protected loadPlayers(): void {
         this.players = [];
         this.warnings = [];
+        this.rosterGenderOf = new Map();
 
         if (this.rosterNames.length > 0) {
             this.loadPlayersFromNames();
@@ -174,11 +230,24 @@ export abstract class BaseScheduler <TSchedule> {
             throw new Error(`Could not find column for date: ${this.targetDateColumn}`);
         }
 
-       playerRows.forEach((row) => {
-            const playerName = row[targetColumnIndex];
+        // Gender is optional: a sheet without it simply schedules without it.
+        const genderColumnIndex = findGenderColumn(headers, targetColumnIndex);
 
-            if (playerName && playerName.trim() !== '') {
-                this.players.push(this.formatPlayerName(playerName));
+       playerRows.forEach((row) => {
+            const cell = row[targetColumnIndex];
+
+            if (cell && cell.trim() !== '') {
+                // Gender may be written after the name, or sit in its own column.
+                const { name, gender } = splitNameAndGender(cell);
+                const player = this.formatPlayerName(name);
+                const rowGender = gender
+                    ?? (genderColumnIndex === -1 ? undefined : readGender(row[genderColumnIndex]));
+
+                this.players.push(player);
+
+                if (rowGender) {
+                    this.rosterGenderOf.set(player, rowGender);
+                }
             }
         })
 
@@ -194,7 +263,17 @@ export abstract class BaseScheduler <TSchedule> {
         this.players = this.rosterNames
             .map(name => name.trim())
             .filter(name => name !== '')
-            .map(name => this.formatPlayerName(name));
+            .map(entry => {
+                // Supports "Cherie Marais (F)" as well as the gender dropdown.
+                const { name, gender } = splitNameAndGender(entry);
+                const player = this.formatPlayerName(name);
+
+                if (gender) {
+                    this.rosterGenderOf.set(player, gender);
+                }
+
+                return player;
+            });
 
         if (this.players.length < 4) {
             throw new Error("Not enough players. Please enter at least 4 names.");
@@ -207,6 +286,7 @@ export abstract class BaseScheduler <TSchedule> {
     protected applyRosterSettings(): void {
         this.applyPartners();
         this.applyRests();
+        this.applyGenders();
     }
 
     /** Resolves the partners argument against the loaded roster. */
@@ -227,6 +307,22 @@ export abstract class BaseScheduler <TSchedule> {
             name => this.formatPlayerName(name)
         );
         this.declaredRestsOf = buildRestTargets(this.restDeclarations);
+    }
+
+    /**
+     * Works out who is who, starting from whatever the roster carried and
+     * letting anything passed in alongside it win, so the form can correct a
+     * sheet. Players nobody gave a gender for stay unknown, which the fixture
+     * shaping simply steps around.
+     */
+    protected applyGenders(): void {
+        this.genderOf = new Map(this.rosterGenderOf);
+
+        resolveGenders(
+            parseGenders(this.gendersInput),
+            this.players,
+            name => this.formatPlayerName(name)
+        ).forEach(({ player, gender }) => this.genderOf.set(player, gender));
     }
 
     protected describePreferredPairs(): string {
@@ -263,6 +359,74 @@ export abstract class BaseScheduler <TSchedule> {
         return count;
     }
 
+    // --- Gender -----------------------------------------------------------
+
+    /** A player's gender, or undefined when nobody told us. */
+    protected genderFor(player: string): Gender | undefined {
+        return this.genderOf.get(player);
+    }
+
+    /** Only the women in a pool. Empty while 'Ladies First' is off. */
+    protected womenIn(pool: Iterable<string>): string[] {
+        if (!this.ladiesFirst) {
+            return [];
+        }
+        return [...pool].filter(player => this.genderFor(player) === 'F');
+    }
+
+    /** What a pair adds up to: ladies, mixed, mens, or unknown. */
+    protected makeupOf(pair: [string, string]): PairMakeup {
+        return pairMakeup(this.genderFor(pair[0]), this.genderFor(pair[1]));
+    }
+
+    /**
+     * How many of `pool` share this player's gender. Zero while 'Ladies First'
+     * is off, or when we do not know the player's gender, so callers using it as
+     * a tie break simply fall through to their next rule.
+     */
+    protected countSameGenderIn(player: string, pool: Iterable<string>): number {
+        const gender = this.genderFor(player);
+
+        if (!this.ladiesFirst || !gender) {
+            return 0;
+        }
+
+        let count = 0;
+        for (const other of pool) {
+            if (this.genderFor(other) === gender) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * The rounds that should set a ladies fixture aside, spread across the
+     * session. Empty when 'Ladies First' is off, or when the roster has too few
+     * women for a ladies fixture to exist.
+     *
+     * Only a couple of rounds are reserved. Every other round is left to the
+     * mixed preference in pairScore, because reserving one every round would
+     * leave the women playing nobody but each other.
+     */
+    protected ladiesFixtureRounds(totalRounds: number): Set<number> {
+        const rounds = new Set<number>();
+
+        if (!this.ladiesFirst || totalRounds < 1) {
+            return rounds;
+        }
+        if (this.womenIn(this.players).length < LADIES_FIXTURE_MIN_WOMEN) {
+            return rounds;
+        }
+
+        const wanted = Math.min(LADIES_FIXTURES_PER_SESSION, totalRounds);
+        for (let fixture = 1; fixture <= wanted; fixture++) {
+            rounds.add(Math.max(1, Math.round((fixture * totalRounds) / (wanted + 1))));
+        }
+
+        return rounds;
+    }
+
     // --- Pairing history --------------------------------------------------
 
     protected resetPairHistory(): void {
@@ -293,10 +457,24 @@ export abstract class BaseScheduler <TSchedule> {
      * they spend together shaves the bonus down. That means a player with two
      * preferred partners naturally alternates between them, and a preference is
      * eventually outranked by a pairing nobody has had yet.
+     *
+     * A mixed pair gets a much smaller nudge on top, so mixed wins between two
+     * otherwise equal pairings but never beats a preference or drags the same
+     * two players back together round after round.
      */
     protected pairScore(first: string, second: string): number {
         const bonus = this.isPreferredPartnership(first, second) ? this.partnerPriority : 0;
-        return bonus - this.timesPaired(first, second);
+        return bonus + this.genderScore(first, second) - this.timesPaired(first, second);
+    }
+
+    /** The mixed pair nudge. Zero while 'Ladies First' is off. */
+    protected genderScore(first: string, second: string): number {
+        if (!this.ladiesFirst) {
+            return 0;
+        }
+        return pairMakeup(this.genderFor(first), this.genderFor(second)) === 'mixed'
+            ? this.genderPriority
+            : 0;
     }
 
     /**
@@ -304,13 +482,16 @@ export abstract class BaseScheduler <TSchedule> {
      * still available. Preferences pull partners together, pairing history pushes
      * repeats apart, and ties fall to a random order.
      *
+     * Stops early at `maxPairs`, which is how a ladies fixture gets its pairs
+     * taken out of the women before the rest of the pool is teamed up.
+     *
      * Records the pairings it makes. An odd player out is left unpaired.
      */
-    protected formPairs(pool: string[]): [string, string][] {
+    protected formPairs(pool: string[], maxPairs: number = Infinity): [string, string][] {
         const available = this.shuffleArray(pool);
         const pairs: [string, string][] = [];
 
-        while (available.length >= 2) {
+        while (available.length >= 2 && pairs.length < maxPairs) {
             let bestFirst = 0;
             let bestSecond = 1;
             let bestScore = -Infinity;
@@ -335,6 +516,82 @@ export abstract class BaseScheduler <TSchedule> {
         }
 
         return pairs;
+    }
+
+    /**
+     * Teams up a round's pool, taking `ladiesPairs` pairs out of the women first.
+     *
+     * That reservation is the only part of the gender handling that is close to a
+     * guarantee, which is why it is done before anything else gets a say. Asking
+     * for more ladies pairs than the women on court can make simply yields fewer.
+     * The rest of the pool is then teamed up as usual.
+     */
+    protected formRoundPairs(pool: string[], ladiesPairs: number = 0): [string, string][] {
+        if (ladiesPairs < 1) {
+            return this.formPairs(pool);
+        }
+
+        const ladies = this.formPairs(this.womenIn(pool), ladiesPairs);
+        const alreadyPaired = new Set(ladies.flat());
+
+        return [
+            ...ladies,
+            ...this.formPairs(pool.filter(player => !alreadyPaired.has(player)))
+        ];
+    }
+
+    /**
+     * Orders a round's teams so that, read two at a time, every fixture faces
+     * like with like: ladies against ladies, mixed against mixed, men against
+     * men. A makeup with an odd team left over plays whichever other leftover is
+     * closest, which is where two men against two women can still turn up.
+     *
+     * The fixtures themselves are shuffled, so no makeup camps on court 1, and
+     * an unpaired team stays last where a court without an opponent belongs.
+     */
+    protected orderTeamsIntoFixtures(teams: [string, string][]): [string, string][] {
+        if (!this.ladiesFirst) {
+            return this.shuffleArray(teams);
+        }
+
+        const byMakeup = new Map<PairMakeup, [string, string][]>();
+        this.shuffleArray(teams).forEach(team => {
+            const makeup = this.makeupOf(team);
+            byMakeup.set(makeup, [...(byMakeup.get(makeup) ?? []), team]);
+        });
+
+        const fixtures: [string, string][][] = [];
+        const leftovers: [string, string][] = [];
+
+        MAKEUP_ORDER.forEach(makeup => {
+            const group = byMakeup.get(makeup) ?? [];
+            while (group.length >= 2) {
+                fixtures.push([group.shift()!, group.shift()!]);
+            }
+            leftovers.push(...group);
+        });
+
+        while (leftovers.length >= 2) {
+            fixtures.push([leftovers.shift()!, leftovers.shift()!]);
+        }
+
+        return [...this.shuffleArray(fixtures).flat(), ...leftovers];
+    }
+
+    /**
+     * Puts one team's pairs in makeup order, ladies first. Ordering both sides
+     * of a team fixture the same way is what lines ladies up against ladies and
+     * mixed against mixed. Shuffled first, so the order within a makeup is still
+     * random, and the sort is stable so that shuffle survives.
+     */
+    protected orderPairsByMakeup(pairs: [string, string][]): [string, string][] {
+        const shuffled = this.shuffleArray(pairs);
+
+        if (!this.ladiesFirst) {
+            return shuffled;
+        }
+
+        return shuffled.sort((a, b) => makeupRank(this.makeupOf(a)) - makeupRank(this.makeupOf(b)));
     }
 
     // --- Rest rotation ----------------------------------------------------
