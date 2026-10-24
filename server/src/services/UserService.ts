@@ -3,8 +3,16 @@ import { Types } from 'mongoose';
 import { BaseService } from './BaseService';
 import { UserModel, type User } from '../models/User';
 import {randomBytes} from "node:crypto";
+import { authService } from './AuthService';
 
 const SALT_ROUNDS = 12;
+let dummyHashPromise: Promise<string> | null = null;
+
+function getDummyHash() {
+    dummyHashPromise ??= bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
+
+    return dummyHashPromise;
+}
 
 export type CreateUserInput = {
     email: string;
@@ -51,7 +59,7 @@ export class UserService extends BaseService<User> {
 
 
     async verifyCredentials(email: string, password: string) {
-        const dummyHash = bcrypt.hashSync(randomBytes(32).toString('hex'), SALT_ROUNDS);
+        const dummyHash = await getDummyHash();
         const user = await this.model
             .findOne({ email: email.toLowerCase() })
             // hash always excluded, explicitly select it
@@ -77,8 +85,12 @@ export class UserService extends BaseService<User> {
 
     async changePassword(id: string, newPassword: string) {
         const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+        const updated = await this.updateById(id, { passwordHash });
 
-        return this.updateById(id, { passwordHash });
+        // A password change must kill every existing session, including a stolen one.
+        if (updated) await authService.revokeAllForUser(id);
+
+        return updated;
     }
 
     async listByClub(clubId: string, { limit, skip }: { limit?: number; skip?: number } = {}) {

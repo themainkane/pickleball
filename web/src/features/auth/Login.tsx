@@ -1,15 +1,18 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useLocation, useNavigate } from 'react-router';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { CenteredPage, FormCard } from '../../ui/FormCard';
 import { useAuth } from '../../context/AuthContext';
+import { FullPageSpinner } from '../../ui/FullPageSpinner';
 
 export function LoginPage() {
-    const { signIn } = useAuth();
+    const { signIn, status } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard';
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -23,13 +26,16 @@ export function LoginPage() {
 
         try {
             await signIn(email, password);
-            navigate('/dashboard', { replace: true });
+            navigate(from, { replace: true });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Something went wrong');
         } finally {
             setBusy(false);
         }
     }
+
+    if (status === 'loading') return <FullPageSpinner />;
+    if (status === 'authenticated' && !busy) return <Navigate to={from} replace />;
 
     return (
         <CenteredPage>

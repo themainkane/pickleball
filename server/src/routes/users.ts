@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { userService } from '../services/UserService';
 import { publicUser } from '../steralizers/userSerializer';
 import {isDuplicateKey} from "./routeHelpers";
+import { requireAuth } from '../middleware/requireAuth';
 
 export const usersRouter = Router();
 
@@ -48,7 +49,7 @@ usersRouter.post('/', async (req, res) => {
     }
 });
 
-usersRouter.get('/', async (req, res) => {
+usersRouter.get('/', requireAuth, async (req, res) => {
     const parsed = listQuery.safeParse(req.query);
 
     if (!parsed.success) {
@@ -69,8 +70,8 @@ usersRouter.get('/', async (req, res) => {
 });
 
 /** GET /users/:id — one, or 404 */
-usersRouter.get('/:id', async (req, res) => {
-    const user = await userService.getById(req.params.id);
+usersRouter.get('/:id', requireAuth, async (req, res) => {
+    const user = await userService.getById(String(req.params.id));
 
     if (!user) {
         res.status(404).json({ error: 'User not found' });
