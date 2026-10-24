@@ -86,6 +86,7 @@ export function resolvePartners(
         }
 
         const key = pairKey(first, second);
+
         if (seen.has(key)) {
             return;
         }
@@ -103,10 +104,13 @@ export function buildPreferenceMap(pairs: PreferredPair[]): Map<string, Set<stri
 
     const add = (player: string, partner: string) => {
         const existing = map.get(player);
+
         if (existing) {
             existing.add(partner);
+
             return;
         }
+
         map.set(player, new Set([partner]));
     };
 
@@ -120,4 +124,59 @@ export function buildPreferenceMap(pairs: PreferredPair[]): Map<string, Set<stri
 
 function pairKey(first: string, second: string): string {
     return [first, second].sort().join('\u0000');
+}
+
+function resolvePlayerName(
+    name: string,
+    players: string[],
+    formatPlayerName: (name: string) => string
+): string {
+    const target = normalise(name);
+    const formattedTarget = normalise(formatPlayerName(name));
+
+    const exact = players.filter(player => normalise(player) === target || normalise(player) === formattedTarget);
+
+    if (exact.length === 1) {
+        return exact[0]!;
+    }
+
+    if (exact.length > 1) {
+        throw ambiguous(name, exact);
+    }
+
+    const prefixed = players.filter(player => normalise(player).startsWith(target));
+
+    if (prefixed.length === 1) {
+        return prefixed[0]!;
+    }
+
+    if (prefixed.length > 1) {
+        throw ambiguous(name, prefixed);
+    }
+
+    const firstNameMatches = players.filter(player => firstNameOf(player) === firstNameOf(name));
+
+    if (firstNameMatches.length === 1) {
+        return firstNameMatches[0]!;
+    }
+
+    if (firstNameMatches.length > 1) {
+        throw ambiguous(name, firstNameMatches);
+    }
+
+    throw new Error(
+        `Partner "${name}" was not found in the roster for this date. Available players: ${players.join(', ')}.`
+    );
+}
+
+function ambiguous(name: string, matches: string[]): Error {
+    return new Error(`Partner "${name}" matches more than one player (${matches.join(', ')}). Please be more specific.`);
+}
+
+function normalise(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\.$/, '');
+}
+
+function firstNameOf(value: string): string {
+    return normalise(value).split(' ')[0] ?? '';
 }

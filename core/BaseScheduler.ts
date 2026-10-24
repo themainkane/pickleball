@@ -177,6 +177,7 @@ export abstract class BaseScheduler <TSchedule> {
     } {
         this.loadPlayers();
         const schedule = this.generateSchedule();
+
         return {
             players: this.players,
             schedule,
@@ -184,6 +185,7 @@ export abstract class BaseScheduler <TSchedule> {
             restDeclarations: this.restDeclarations,
             warnings: this.warnings
         };
+
     }
 
     public getPreferredPairs(): PreferredPair[] {
@@ -215,6 +217,7 @@ export abstract class BaseScheduler <TSchedule> {
 
         if (this.rosterNames.length > 0) {
             this.loadPlayersFromNames();
+
             return;
         }
 
@@ -224,6 +227,7 @@ export abstract class BaseScheduler <TSchedule> {
         if(!headers || headers.length === 0) {
             throw new Error("No headers found in the CSV file. Please ensure column headers are present and formatted correctly: DD/MM/YY");
         }
+
         const targetColumnIndex = headers.findIndex(header => header === this.targetDateColumn);
 
         if (targetColumnIndex === -1) {
@@ -331,6 +335,7 @@ export abstract class BaseScheduler <TSchedule> {
 
     protected formatPlayerName(name: string): string {
         const names = name.split(' ');
+
         return names.length === 1 ?
             `${names[0]}` : `${names[0]} ${names[names.length - 1].charAt(0).toUpperCase()}`;
 
@@ -356,6 +361,7 @@ export abstract class BaseScheduler <TSchedule> {
                 count++;
             }
         }
+
         return count;
     }
 
@@ -464,6 +470,8 @@ export abstract class BaseScheduler <TSchedule> {
      */
     protected pairScore(first: string, second: string): number {
         const bonus = this.isPreferredPartnership(first, second) ? this.partnerPriority : 0;
+
+        return bonus - this.timesPaired(first, second);
         return bonus + this.genderScore(first, second) - this.timesPaired(first, second);
     }
 
@@ -499,6 +507,7 @@ export abstract class BaseScheduler <TSchedule> {
             for (let i = 0; i < available.length - 1; i++) {
                 for (let j = i + 1; j < available.length; j++) {
                     const score = this.pairScore(available[i]!, available[j]!);
+
                     if (score > bestScore) {
                         bestScore = score;
                         bestFirst = i;
@@ -642,6 +651,7 @@ export abstract class BaseScheduler <TSchedule> {
             const randomIndex  = Math.floor(Math.random() * (i + 1));
             [arr[i], arr[randomIndex]] = [arr[randomIndex]!, arr[i]!];
         }
+
         return arr;
     }
 
