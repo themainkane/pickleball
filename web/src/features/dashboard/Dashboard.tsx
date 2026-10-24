@@ -6,17 +6,15 @@ import { useAuth } from '../../context/AuthContext.tsx';
 import { Page } from '../../ui/Page.tsx';
 
 export function Dashboard() {
-    const { token, user, signOut } = useAuth();
+    const { user, signOut } = useAuth();
     const [users, setUsers] = useState<AuthUser[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!token) return;
-
-        listUsers(token)
+        listUsers()
             .then((res) => setUsers(res.items))
             .catch((err: Error) => setError(err.message));
-    }, [token]);
+    }, []);
 
     return (
         <Page>

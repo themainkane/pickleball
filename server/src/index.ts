@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import mongoose from 'mongoose';
 import { env } from './config/env';
@@ -9,7 +10,9 @@ async function main() {
     await connectDb();
 
     const app = express();
-    app.use(express.json());
+    app.disable('x-powered-by');
+    app.use(express.json({ limit: '100kb' }));
+    app.use(cookieParser());
 
     app.get('/health', (_req, res) => {
         const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
