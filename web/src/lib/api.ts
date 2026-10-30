@@ -13,7 +13,8 @@ export class ApiError extends Error {
 // Do not change without changing server/steralizers/user
 export type AuthUser = {
     id: string;
-    displayName: string;
+    firstName: string;
+    lastName: string;
     rating: number | null;
     email: string;
     createdAt: string;

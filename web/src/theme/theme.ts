@@ -5,15 +5,15 @@ import {createTheme, responsiveFontSizes} from '@mui/material/styles';
 export const theme = responsiveFontSizes(createTheme({
     palette: {
         mode: 'light',
-        primary: { main: '#0a40e3' },
+        primary: { main: '#0a40e3', contrastText: '#f5f5f0' },
     },
     shape: { borderRadius: 10 },
     components: {
         MuiTextField: { defaultProps: { fullWidth: true, margin: 'normal' } },
         MuiButton: {
             defaultProps: { fullWidth: true },
-            // mobile friendly button override
             styleOverrides: { root: { minHeight: 44 } },
         },
+        MuiSvgIcon: {defaultProps: { color: 'primary' }},
     },
 }));
