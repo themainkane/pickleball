@@ -187,6 +187,7 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
 
             if (pullToA !== pullToB) {
                 (pullToA > pullToB ? this.teamA : this.teamB).push(player);
+
                 return;
             }
 
@@ -198,6 +199,7 @@ export class TeamScheduler extends BaseScheduler<RoundSchedule[]> {
 
             if (sameGenderInA !== sameGenderInB) {
                 (sameGenderInA < sameGenderInB ? this.teamA : this.teamB).push(player);
+
                 return;
             }
 

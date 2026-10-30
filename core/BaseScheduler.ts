@@ -377,6 +377,7 @@ export abstract class BaseScheduler <TSchedule> {
         if (!this.ladiesFirst) {
             return [];
         }
+
         return [...pool].filter(player => this.genderFor(player) === 'F');
     }
 
@@ -403,6 +404,7 @@ export abstract class BaseScheduler <TSchedule> {
                 count++;
             }
         }
+
         return count;
     }
 
@@ -421,6 +423,7 @@ export abstract class BaseScheduler <TSchedule> {
         if (!this.ladiesFirst || totalRounds < 1) {
             return rounds;
         }
+
         if (this.womenIn(this.players).length < LADIES_FIXTURE_MIN_WOMEN) {
             return rounds;
         }
@@ -471,7 +474,6 @@ export abstract class BaseScheduler <TSchedule> {
     protected pairScore(first: string, second: string): number {
         const bonus = this.isPreferredPartnership(first, second) ? this.partnerPriority : 0;
 
-        return bonus - this.timesPaired(first, second);
         return bonus + this.genderScore(first, second) - this.timesPaired(first, second);
     }
 
@@ -480,6 +482,7 @@ export abstract class BaseScheduler <TSchedule> {
         if (!this.ladiesFirst) {
             return 0;
         }
+
         return pairMakeup(this.genderFor(first), this.genderFor(second)) === 'mixed'
             ? this.genderPriority
             : 0;

@@ -45,7 +45,9 @@ function parseDefaultRests(value: unknown): number {
  */
 function parseLadiesFirst(value: unknown): boolean {
     if (value === undefined || value === null || value === '') return true;
+
     const text = String(value).trim().toLowerCase();
+
     return text === 'on' || text === 'true' || text === '1' || text === 'yes';
 }
 

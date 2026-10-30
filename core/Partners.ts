@@ -125,15 +125,3 @@ export function buildPreferenceMap(pairs: PreferredPair[]): Map<string, Set<stri
 function pairKey(first: string, second: string): string {
     return [first, second].sort().join('\u0000');
 }
-
-function ambiguous(name: string, matches: string[]): Error {
-    return new Error(`Partner "${name}" matches more than one player (${matches.join(', ')}). Please be more specific.`);
-}
-
-function normalise(value: string): string {
-    return value.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\.$/, '');
-}
-
-function firstNameOf(value: string): string {
-    return normalise(value).split(' ')[0] ?? '';
-}

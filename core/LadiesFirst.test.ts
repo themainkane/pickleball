@@ -68,6 +68,7 @@ class TestScheduler extends BaseScheduler<void> {
 
     public roster(): string[] {
         this.validate();
+
         return this.players;
     }
 
