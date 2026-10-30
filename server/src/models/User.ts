@@ -4,7 +4,8 @@ const userSchema = new Schema(
     {
         email: { type: String, required: true, unique: true, lowercase: true, trim: true },
         passwordHash: { type: String, required: true, select: false },
-        userName: { type: String, required: true, trim: true, maxlength: 60 },
+        firstName: { type: String, required: true, trim: true, maxlength: 60 },
+        lastName: { type: String, required: true, trim: true, maxlength: 60 },
         rating: { type: Number, min: 0, max: 8 },
         clubId: { type: Schema.Types.ObjectId, ref: 'Club', index: true },
         teams: [{ type: Schema.Types.ObjectId, ref: 'Team' }],

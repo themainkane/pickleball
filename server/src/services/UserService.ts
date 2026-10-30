@@ -17,14 +17,16 @@ function getDummyHash() {
 export type CreateUserInput = {
     email: string;
     password: string;
-    userName: string;
+    firstName: string;
+    lastName: string;
     rating?: number;
     clubId?: string;
 };
 
 /** fields a user is allowed to change about themselves */
 export type UpdateUserInput = {
-    userName?: string;
+    firstName?: string;
+    lastName?: string;
     rating?: number;
 };
 
@@ -100,7 +102,7 @@ export class UserService extends BaseService<User> {
             filter: { clubId: new Types.ObjectId(clubId) },
             limit,
             skip,
-            sort: { userName: 1 },
+            sort: { lastName: 1, firstName: 1 },
         });
     }
 }

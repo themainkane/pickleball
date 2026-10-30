@@ -12,7 +12,8 @@ const OBJECT_ID = /^[a-f\d]{24}$/i;
 const createUserBody = z.object({
     email: z.email(),
     password: z.string().min(12).max(200),
-    userName: z.string().trim().min(1).max(60),
+    firstName: z.string().trim().min(1).max(60),
+    lastName: z.string().trim().min(1).max(60),
     rating: z.coerce.number().min(0).max(8).optional(),
     clubId: z.string().regex(OBJECT_ID).optional(),
 });

@@ -23,7 +23,8 @@ const LOGIN_BODY = z.object({
 const REGISTER_BODY = z.object({
     email: z.string().trim().toLowerCase().pipe(z.email()),
     password: z.string().min(12).max(200),
-    userName: z.string().trim().min(1).max(60),
+    firstName: z.string().trim().min(1).max(60),
+    lastName: z.string().trim().min(1).max(60),
 });
 
 const REFRESH_COOKIE = 'refresh_token';
