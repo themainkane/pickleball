@@ -7,7 +7,10 @@ const userSchema = new Schema(
         firstName: { type: String, required: true, trim: true, maxlength: 60 },
         lastName: { type: String, required: true, trim: true, maxlength: 60 },
         rating: { type: Number, min: 0, max: 8 },
-        clubId: { type: Schema.Types.ObjectId, ref: 'Club', index: true },
+        // Platform-wide staff (e.g. creating organisations). Not an organisation role.
+        // Never set from a request body; grant with `npm run set-superuser`.
+        isSuperuser: { type: Boolean, required: true, default: false },
+        // Clubs, organisations and venues a user belongs to live in Membership.
         teams: [{ type: Schema.Types.ObjectId, ref: 'Team' }],
     },
     {

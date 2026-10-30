@@ -3,6 +3,8 @@ import { env } from '../config/env';
 
 export async function connectDb(): Promise<void> {
     mongoose.set('strictQuery', true);
+    // Lets withTransaction() attach its session to every query automatically.
+    mongoose.set('transactionAsyncLocalStorage', true);
 
     if (env.NODE_ENV === 'dev') {
         mongoose.set('debug', true); // verbose
