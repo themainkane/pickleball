@@ -1,5 +1,4 @@
 import bcrypt from 'bcrypt';
-import { Types } from 'mongoose';
 import { BaseService } from './BaseService';
 import { UserModel, type User } from '../models/User';
 import {randomBytes} from "node:crypto";
@@ -20,7 +19,6 @@ export type CreateUserInput = {
     firstName: string;
     lastName: string;
     rating?: number;
-    clubId?: string;
 };
 
 /** fields a user is allowed to change about themselves */
@@ -35,13 +33,12 @@ export class UserService extends BaseService<User> {
         super(UserModel);
     }
 
-    async register({ password, clubId, ...rest }: CreateUserInput) {
+    async register({ password, ...rest }: CreateUserInput) {
         const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
        return await this.create({
             ...rest,
             passwordHash,
-            ...(clubId ? { clubId: new Types.ObjectId(clubId) } : {}),
         });
 
 
@@ -93,17 +90,6 @@ export class UserService extends BaseService<User> {
         if (updated) await authService.revokeAllForUser(id);
 
         return updated;
-    }
-
-    async listByClub(clubId: string, { limit, skip }: { limit?: number; skip?: number } = {}) {
-        if (!Types.ObjectId.isValid(clubId)) return { items: [], hasMore: false };
-
-        return this.list({
-            filter: { clubId: new Types.ObjectId(clubId) },
-            limit,
-            skip,
-            sort: { lastName: 1, firstName: 1 },
-        });
     }
 }
 

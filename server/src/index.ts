@@ -5,6 +5,9 @@ import { env } from './config/env';
 import { connectDb, disconnectDb } from './db/connect';
 import { usersRouter } from './routes/users';
 import {authRouter} from "./routes/auth";
+import { clubsRouter } from './routes/clubs';
+import { organisationsRouter } from './routes/organisations';
+import { venuesRouter } from './routes/venues';
 
 async function main() {
     await connectDb();
@@ -24,6 +27,9 @@ async function main() {
 
     app.use('/users', usersRouter);
     app.use('/auth', authRouter);
+    app.use('/organisations', organisationsRouter);
+    app.use('/venues', venuesRouter);
+    app.use('/clubs', clubsRouter);
 
     app.use((_req, res) => {
         res.status(404).json({ error: 'Not found' });

@@ -3,6 +3,19 @@ services:
     image: mongo:7.0
     container_name: slice-mongo
     restart: unless-stopped
+    # Single-node replica set: MongoDB only supports transactions on a replica set.
+    # With auth on, replica set members must share a key file. With one member it only
+    # has to exist, so it's generated on first start (kept in the configdb volume).
+    entrypoint:
+      - bash
+      - -c
+      - |
+        if [ ! -f /data/configdb/replica-set.key ]; then
+          tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 756 > /data/configdb/replica-set.key
+        fi
+        chmod 400 /data/configdb/replica-set.key
+        chown mongodb:mongodb /data/configdb/replica-set.key
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/replica-set.key
     ports:
       - "127.0.0.1:27017:27017"
     environment:
@@ -11,9 +24,17 @@ services:
       MONGO_INITDB_DATABASE: pickleball
     volumes:
       - mongo-data:/data/db
+      - mongo-config:/data/configdb
       - ./docker/mongo-init:/docker-entrypoint-initdb.d:ro
+    # Also initiates the replica set the first time it runs, then only reports
+    # healthy once this node is the writable primary.
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u root -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval
+          'try { rs.status() } catch (error) { rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] }) }
+          if (!db.hello().isWritablePrimary) quit(1)'
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,9 +50,12 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_URL: mongodb://root:${MONGO_ROOT_PASSWORD}@mongo:27017/
+      # directConnection: talk to this node directly instead of the replica set's
+      # advertised host ("localhost"), which means something else inside this container.
+      ME_CONFIG_MONGODB_URL: mongodb://root:${MONGO_ROOT_PASSWORD}@mongo:27017/?directConnection=true
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD}
 
 volumes:
   mongo-data:
+  mongo-config:
