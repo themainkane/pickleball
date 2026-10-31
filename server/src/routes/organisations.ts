@@ -73,6 +73,7 @@ organisationsRouter.patch(
 
         if (!organisation){
             response.status(404).json({ error: 'Organisation not found' });
+
             return;
         }
 

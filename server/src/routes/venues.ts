@@ -53,6 +53,7 @@ venuesRouter.patch('/:venueId', requireAuth, requireRole(ScopeType.Venue, 'venue
 
     if (!venue) {
         response.status(404).json({ error: 'Venue not found' });
+
         return;
     }
 
