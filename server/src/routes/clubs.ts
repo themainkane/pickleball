@@ -6,7 +6,7 @@ import { isAtLeast, Role, ScopeType } from '../models/Membership';
 import { clubService } from '../services/ClubService';
 import { membershipService } from '../services/MembershipService';
 import { venueService } from '../services/VenueService';
-import { publicClub } from '../steralizers/clubSerializer';
+import { publicClub } from '../serializers/clubSerializer';
 import { createMembersRouter } from './members';
 import { badRequest, OBJECT_ID_SCHEMA } from './routeHelpers';
 
@@ -83,7 +83,13 @@ clubsRouter.patch('/:clubId', requireAuth, requireRole(ScopeType.Club, 'clubId',
 
     const club = await clubService.updateDetails(String(request.params.clubId), parsed.data);
 
-    response.json(publicClub(club!));
+    if (!club) {
+        response.status(404).json({ error: 'Club not found' });
+
+        return;
+    }
+
+    response.json(publicClub(club));
 });
 
 clubsRouter.use('/:clubId/members', createMembersRouter(ScopeType.Club, 'clubId'));

@@ -1,21 +1,21 @@
 import { Router } from 'express';
 import { userService } from '../services/UserService';
 import { membershipService } from '../services/MembershipService';
-import { publicUser } from '../steralizers/userSerializer';
-import { userMembership } from '../steralizers/membershipSerializer';
+import { publicUser } from '../serializers/userSerializer';
+import { userMembership } from '../serializers/membershipSerializer';
 import {badRequest, LIST_QUERY_SCHEMA} from "./routeHelpers";
 import { requireAuth } from '../middleware/requireAuth';
 
 export const usersRouter = Router();
 
 usersRouter.get('/', requireAuth, async (request, response) => {
-    const parsed = LIST_QUERY_SCHEMA.safeParse(request.query);
+    const {data, success, error} = LIST_QUERY_SCHEMA.safeParse(request.query);
 
-    if (!parsed.success) return badRequest(response, 'Invalid query', parsed.error);
+    if (!success) return badRequest(response, 'Invalid query', error);
 
     const { items, hasMore } = await userService.list({
-        limit: parsed.data.limit,
-        skip: parsed.data.skip,
+        limit: data.limit,
+        skip: data.skip,
     });
 
     response.json({ items: items.map(publicUser), hasMore });

@@ -6,7 +6,7 @@ import { SURFACES } from '../models/Court';
 import { Role, ScopeType } from '../models/Membership';
 import { courtService } from '../services/CourtService';
 import { venueService } from '../services/VenueService';
-import { publicCourt } from '../steralizers/courtSerializer';
+import { publicCourt } from '../serializers/courtSerializer';
 import { badRequest, isDuplicateKey } from './routeHelpers';
 
 /** Mounted at /venues/:venueId/courts. */

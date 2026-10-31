@@ -27,8 +27,8 @@ export function LoginPage() {
         try {
             await signIn(email, password);
             navigate(from, { replace: true });
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Something went wrong');
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Something went wrong');
         } finally {
             setBusy(false);
         }

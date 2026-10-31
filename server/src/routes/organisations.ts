@@ -8,9 +8,9 @@ import { clubService } from '../services/ClubService';
 import { organisationService } from '../services/OrganisationService';
 import { userService } from '../services/UserService';
 import { venueService } from '../services/VenueService';
-import { publicClub } from '../steralizers/clubSerializer';
-import { publicOrganisation } from '../steralizers/organisationSerializer';
-import { publicVenue } from '../steralizers/venueSerializer';
+import { publicClub } from '../serializers/clubSerializer';
+import { publicOrganisation } from '../serializers/organisationSerializer';
+import { publicVenue } from '../serializers/venueSerializer';
 import { createMembersRouter } from './members';
 import { badRequest, LIST_QUERY_SCHEMA, OBJECT_ID_SCHEMA } from './routeHelpers';
 import { CREATE_VENUE_FIELDS } from './venues';
@@ -71,7 +71,13 @@ organisationsRouter.patch(
 
         const organisation = await organisationService.updateDetails(String(request.params.organisationId), parsed.data);
 
-        response.json(publicOrganisation(organisation!));
+        if (!organisation){
+            response.status(404).json({ error: 'Organisation not found' });
+
+            return;
+        }
+
+        response.json(publicOrganisation(organisation));
     },
 );
 

@@ -7,7 +7,7 @@ Read `CONVENTIONS.md` before writing code. It is the authority on style; this fi
 ```
 core/          framework-free scheduling engine (+ *.test.ts)
 server/src/    Express 5 + Mongoose API
-  config/ db/ middleware/ models/ routes/ services/ steralizers/ scripts/
+  config/ db/ middleware/ models/ routes/ services/ serializers/ scripts/
 web/src/       React 19 + MUI + react-router SPA
   context/ features/ layouts/ lib/ theme/ ui/
 server.ts      legacy standalone demo server, not part of the API
