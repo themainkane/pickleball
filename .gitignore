@@ -22,7 +22,6 @@ Thumbs.db
 npm-debug.log*
 
 # Players
-
 player-list/
 
 #env

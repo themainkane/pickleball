@@ -1,4 +1,5 @@
-import { Schema, model, InferSchemaType, Types } from 'mongoose';
+import { Schema, model, InferSchemaType } from 'mongoose';
+import type { Lean } from './lean';
 
 export const SURFACES = ['hard', 'acrylic', 'concrete', 'asphalt', 'wood', 'synthetic', 'grass', 'clay'] as const;
 export type Surface = (typeof SURFACES)[number];
@@ -28,6 +29,6 @@ const courtSchema = new Schema(
 courtSchema.index({ venueId: 1, name: 1 }, { unique: true });
 
 export type Court = InferSchemaType<typeof courtSchema>;
-export type CourtLean = Court & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type CourtLean = Lean<Court>;
 
 export const CourtModel = model('Court', courtSchema);

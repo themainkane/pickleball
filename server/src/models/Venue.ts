@@ -1,4 +1,5 @@
-import { Schema, model, InferSchemaType, Types } from 'mongoose';
+import { Schema, model, InferSchemaType } from 'mongoose';
+import type { Lean } from './lean';
 
 /** A physical site. Always belongs to exactly one organisation. */
 const venueSchema = new Schema(
@@ -14,6 +15,6 @@ const venueSchema = new Schema(
 );
 
 export type Venue = InferSchemaType<typeof venueSchema>;
-export type VenueLean = Venue & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type VenueLean = Lean<Venue>;
 
 export const VenueModel = model('Venue', venueSchema);

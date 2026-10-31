@@ -8,14 +8,14 @@ import { membershipService } from '../services/MembershipService';
 import { venueService } from '../services/VenueService';
 import { publicClub } from '../steralizers/clubSerializer';
 import { createMembersRouter } from './members';
-import { badRequest, objectIdSchema } from './routeHelpers';
+import { badRequest, OBJECT_ID_SCHEMA } from './routeHelpers';
 
 export const clubsRouter = Router();
 
 const CREATE_CLUB_BODY = z.object({
     name: z.string().trim().min(1).max(120),
-    organisationId: objectIdSchema.optional(),
-    homeVenueId: objectIdSchema.optional(),
+    organisationId: OBJECT_ID_SCHEMA.optional(),
+    homeVenueId: OBJECT_ID_SCHEMA.optional(),
 });
 
 const UPDATE_CLUB_BODY = CREATE_CLUB_BODY.omit({ organisationId: true }).partial();

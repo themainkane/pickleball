@@ -7,9 +7,9 @@ export function isDuplicateKey(err: unknown) {
 
 export const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
 
-export const objectIdSchema = z.string().regex(OBJECT_ID_PATTERN);
+export const OBJECT_ID_SCHEMA = z.string().regex(OBJECT_ID_PATTERN);
 
-export const listQuerySchema = z.object({
+export const LIST_QUERY_SCHEMA = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional(),
     skip: z.coerce.number().int().min(0).optional(),
 });

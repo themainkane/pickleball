@@ -1,4 +1,5 @@
-import { Schema, model, InferSchemaType, Types } from 'mongoose';
+import { Schema, model, InferSchemaType } from 'mongoose';
+import type { Lean } from './lean';
 
 /**
  * A group of players. Can be independent, or run by an organisation (whose admins
@@ -15,6 +16,6 @@ const clubSchema = new Schema(
 );
 
 export type Club = InferSchemaType<typeof clubSchema>;
-export type ClubLean = Club & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type ClubLean = Lean<Club>;
 
 export const ClubModel = model('Club', clubSchema);

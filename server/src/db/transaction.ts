@@ -10,11 +10,5 @@ import mongoose from 'mongoose';
  * retries `work` from the start, so it must not have side effects outside the database.
  */
 export async function withTransaction<Result>(work: () => Promise<Result>): Promise<Result> {
-    let result: Result;
-
-    await mongoose.connection.transaction(async () => {
-        result = await work();
-    });
-
-    return result!;
+    return mongoose.connection.transaction(work) as Promise<Result>;
 }

@@ -6,10 +6,10 @@ import { Role, ScopeType } from '../models/Membership';
 import { membershipService, type MembershipChangeResult, type Scope } from '../services/MembershipService';
 import { userService } from '../services/UserService';
 import { publicMember } from '../steralizers/membershipSerializer';
-import { badRequest, listQuerySchema, objectIdSchema } from './routeHelpers';
+import { badRequest, LIST_QUERY_SCHEMA, OBJECT_ID_SCHEMA } from './routeHelpers';
 
 const ADD_MEMBER_BODY = z.object({
-    userId: objectIdSchema,
+    userId: OBJECT_ID_SCHEMA,
     role: z.enum(Role),
 });
 
@@ -54,7 +54,7 @@ export function createMembersRouter(scopeType: ScopeType, parameterName: string)
     const actorFrom = (request: Request) => ({ userId: request.userId!, role: request.scopeRole! });
 
     router.get('/', requireAuth, requireRole(scopeType, parameterName, Role.Member), async (request, response) => {
-        const parsed = listQuerySchema.safeParse(request.query);
+        const parsed = LIST_QUERY_SCHEMA.safeParse(request.query);
 
         if (!parsed.success) return badRequest(response, 'Invalid query', parsed.error);
 
