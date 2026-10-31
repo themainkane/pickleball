@@ -1,4 +1,4 @@
-// Do not change without changing server/steralizers/user
+// Do not change without changing server/serializers/user
 export type AuthUser = {
     id: string;
     firstName: string;

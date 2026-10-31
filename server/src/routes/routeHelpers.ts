@@ -1,8 +1,8 @@
 import type { Response } from 'express';
 import { z } from 'zod';
 
-export function isDuplicateKey(err: unknown) {
-    return typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000;
+export function isDuplicateKey(error: unknown) {
+    return typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000;
 }
 
 export const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
