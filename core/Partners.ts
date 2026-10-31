@@ -86,6 +86,7 @@ export function resolvePartners(
         }
 
         const key = pairKey(first, second);
+
         if (seen.has(key)) {
             return;
         }
@@ -103,10 +104,13 @@ export function buildPreferenceMap(pairs: PreferredPair[]): Map<string, Set<stri
 
     const add = (player: string, partner: string) => {
         const existing = map.get(player);
+
         if (existing) {
             existing.add(partner);
+
             return;
         }
+
         map.set(player, new Set([partner]));
     };
 

@@ -122,6 +122,7 @@ export function resolveGenders(
         if (existing === undefined) {
             byPlayer.set(name, gender);
             resolved.push({ player: name, gender });
+
             return;
         }
 
@@ -143,6 +144,7 @@ export function buildGenderMap(declarations: GenderDeclaration[]): Map<string, G
 /** M or F, however it was written. Undefined for anything else, including blanks. */
 export function readGender(value: unknown): Gender | undefined {
     const text = String(value ?? '').trim().toUpperCase();
+
     return text === 'M' || text === 'F' ? text : undefined;
 }
 
@@ -175,6 +177,7 @@ export function splitNameAndGender(entry: string): { name: string; gender?: Gend
  */
 export function findGenderColumn(headers: string[], targetColumnIndex: number): number {
     const beside = targetColumnIndex + 1;
+
     if (isGenderHeader(headers[beside])) {
         return beside;
     }
@@ -183,11 +186,13 @@ export function findGenderColumn(headers: string[], targetColumnIndex: number): 
     const dated = headers.findIndex(header =>
         target !== '' && GENDER_HEADERS.some(name => normalise(header) === `${target} ${name}`)
     );
+
     if (dated !== -1) {
         return dated;
     }
 
     const lone = headers.filter(isGenderHeader);
+
     return lone.length === 1 ? headers.findIndex(isGenderHeader) : -1;
 }
 
@@ -196,18 +201,22 @@ export function pairMakeup(first: Gender | undefined, second: Gender | undefined
     if (!first || !second) {
         return 'unknown';
     }
+
     if (first === 'F' && second === 'F') {
         return 'ladies';
     }
+
     if (first === 'M' && second === 'M') {
         return 'mens';
     }
+
     return 'mixed';
 }
 
 /** Where a makeup sits in MAKEUP_ORDER. Used to line two teams up against each other. */
 export function makeupRank(makeup: PairMakeup): number {
     const rank = MAKEUP_ORDER.indexOf(makeup);
+
     return rank === -1 ? MAKEUP_ORDER.length : rank;
 }
 
@@ -223,6 +232,7 @@ function rawEntries(input: NonNullable<GendersInput>): Array<[string, unknown]> 
             .filter(entry => entry.trim() !== '')
             .map(entry => {
                 const [name, ...rest] = entry.split(GENDER_SEPARATOR);
+
                 return [String(name), rest.join('').trim()];
             });
     }

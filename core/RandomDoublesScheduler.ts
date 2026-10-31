@@ -134,6 +134,7 @@ export class RandomDoublesScheduler extends BaseScheduler<RoundSchedule[]> {
                 restPile: currentResters
             });
         }
+
             return rounds;
     }
 
