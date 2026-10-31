@@ -89,8 +89,8 @@ function todayLabel(): string {
 
 // --- 1. Serve the HTML Webpage ---
 // When someone goes to localhost:3000, send them this HTML form
-app.get('/', (req: Request, res: Response) => {
-    res.send(`
+app.get('/', (request: Request, response: Response) => {
+    response.send(`
         <!DOCTYPE html>
         <html>
         <head>
@@ -129,34 +129,34 @@ app.get('/', (req: Request, res: Response) => {
     `);
 });
 
-app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Response) => {
+app.post('/api/generate', upload.single('rosterFile'), (request: Request, response: Response) => {
     try {
-        const rosterNames = parsePlayerNames(req.body.playerNames);
+        const rosterNames = parsePlayerNames(request.body.playerNames);
 
-        if (!req.file && rosterNames.length === 0) {
-            return res.status(400).json({ error: 'Upload a CSV or type in some player names.' });
+        if (!request.file && rosterNames.length === 0) {
+            return response.status(400).json({ error: 'Upload a CSV or type in some player names.' });
         }
 
-        if (!req.file && rosterNames.length < 4) {
-            return res.status(400).json({ error: 'Please enter at least 4 player names.' });
+        if (!request.file && rosterNames.length < 4) {
+            return response.status(400).json({ error: 'Please enter at least 4 player names.' });
         }
 
-        if (req.file && rosterNames.length === 0 && !req.body.targetDate) {
-            return res.status(400).json({ error: 'Target date required.' });
+        if (request.file && rosterNames.length === 0 && !request.body.targetDate) {
+            return response.status(400).json({ error: 'Target date required.' });
         }
 
-        const targetDate = req.body.targetDate || todayLabel();
-        const gameMode = req.body.gameMode;
-        const settings = parseSessionSettings(req.body);
-        const scoringSystem = req.body.scoringSystem === 'football' ? 'football' : 'pickleball';
-        const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
+        const targetDate = request.body.targetDate || todayLabel();
+        const gameMode = request.body.gameMode;
+        const settings = parseSessionSettings(request.body);
+        const scoringSystem = request.body.scoringSystem === 'football' ? 'football' : 'pickleball';
+        const csvContent = request.file ? request.file.buffer.toString('utf-8') : '';
 
         let scheduler: RandomDoublesScheduler | TeamScheduler;
 
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
+            scheduler = new TeamScheduler(csvContent, response, targetDate, { ...settings, rosterNames });
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
+            scheduler = new RandomDoublesScheduler(csvContent, response, targetDate, { ...settings, rosterNames });
         }
 
         const data = scheduler.getScheduleData();
@@ -178,15 +178,15 @@ app.post('/api/generate', upload.single('rosterFile'), (req: Request, res: Respo
             responseJson.teamB = teamScheduler.teamB;
         }
 
-        res.json(responseJson);
+        response.json(responseJson);
     } catch (error: unknown) {
         console.error(error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+        response.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
 });
 
-app.get('/live', (req: Request, res: Response) => {
-    res.send(`
+app.get('/live', (request: Request, response: Response) => {
+    response.send(`
         <!DOCTYPE html>
         <html>
         <head>
@@ -265,7 +265,7 @@ app.get('/live', (req: Request, res: Response) => {
                     if (!tournament) return;
                     
                     // Send the actively generated schedule to the backend to turn it into a PDF
-                    const res = await fetch('/api/download-pdf', {
+                    const response = await fetch('/api/download-pdf', {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json' 
@@ -273,8 +273,8 @@ app.get('/live', (req: Request, res: Response) => {
                         body: JSON.stringify(tournament)
                     });
                     
-                    if (res.ok) {
-                        const blob = await res.blob();
+                    if (response.ok) {
+                        const blob = await response.blob();
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
@@ -308,10 +308,10 @@ app.get('/live', (req: Request, res: Response) => {
                     formData.append('ladiesFirst', ladiesFirstEnabled() ? 'on' : 'off');
                     formData.append('scoringSystem', document.getElementById('scoring-system').value);
 
-                    const res = await fetch('/api/generate', { method: 'POST', body: formData });
-                    const data = await res.json();
+                    const response = await fetch('/api/generate', { method: 'POST', body: formData });
+                    const data = await response.json();
                     
-                    if(!res.ok) return alert('Error generating: ' + (data.error || 'Check date or CSV format.'));
+                    if(!response.ok) return alert('Error generating: ' + (data.error || 'Check date or CSV format.'));
                     
                     tournament = data;
                     matchScores = {};
@@ -442,44 +442,44 @@ app.get('/live', (req: Request, res: Response) => {
     `);
 });
 
-app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response) => {
+app.post('/generate', upload.single('rosterFile'), (request: Request, response: Response) => {
     try {
-        const rosterNames = parsePlayerNames(req.body.playerNames);
+        const rosterNames = parsePlayerNames(request.body.playerNames);
 
-        if (!req.file && rosterNames.length === 0) {
+        if (!request.file && rosterNames.length === 0) {
             console.error('No roster supplied.');
 
-            return res.status(400).send('Upload a CSV or type in some player names. <a href="/">Go Back</a>');
+            return response.status(400).send('Upload a CSV or type in some player names. <a href="/">Go Back</a>');
         }
 
-        const usingCsv = !!req.file && rosterNames.length === 0;
+        const usingCsv = !!request.file && rosterNames.length === 0;
 
-        if (usingCsv && !req.body.targetDate) {
+        if (usingCsv && !request.body.targetDate) {
             console.error('Target date is required.');
 
-            return res.status(400).send('Target date is required. <a href="/">Go Back</a>');
+            return response.status(400).send('Target date is required. <a href="/">Go Back</a>');
         }
 
-        const targetDate = req.body.targetDate || todayLabel();
+        const targetDate = request.body.targetDate || todayLabel();
 
-        const gameMode = req.body.gameMode;
-        const settings = parseSessionSettings(req.body);
-        const csvContent = req.file ? req.file.buffer.toString('utf-8') : '';
+        const gameMode = request.body.gameMode;
+        const settings = parseSessionSettings(request.body);
+        const csvContent = request.file ? request.file.buffer.toString('utf-8') : '';
 
-        // Create the scheduler, passing in the string and the 'res' (Response) stream
+        // Create the scheduler, passing in the string and the 'response' (Response) stream
         let scheduler: RandomDoublesScheduler | TeamScheduler;
 
         if (gameMode === 'teams') {
-            scheduler = new TeamScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
+            scheduler = new TeamScheduler(csvContent, response, targetDate, { ...settings, rosterNames });
         } else {
-            scheduler = new RandomDoublesScheduler(csvContent, res, targetDate, { ...settings, rosterNames });
+            scheduler = new RandomDoublesScheduler(csvContent, response, targetDate, { ...settings, rosterNames });
         }
 
         // Surface roster, partner and rest problems as HTML before we start streaming a PDF
         scheduler.validate();
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="Schedule_${targetDate.replace(/\//g, '-')}.pdf"`);
+        response.setHeader('Content-Type', 'application/pdf');
+        response.setHeader('Content-Disposition', `attachment; filename="Schedule_${targetDate.replace(/\//g, '-')}.pdf"`);
 
 
         // Run it! The PDF will pipe directly back to the user.
@@ -490,27 +490,27 @@ app.post('/generate', upload.single('rosterFile'), (req: Request, res: Response)
         // If they type the wrong date or the CSV is bad, show them the error
         const message = error instanceof Error ? error.message : 'Unknown error';
 
-        res.status(500).send(`<h2>Error Generating Schedule:</h2><p>${message}</p><a href="/">Go Back</a>`);
+        response.status(500).send(`<h2>Error Generating Schedule:</h2><p>${message}</p><a href="/">Go Back</a>`);
     }
 });
 
 // --- PDF Download Endpoint for Live Dashboard ---
-app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res: Response) => {
+app.post('/api/download-pdf', express.json({limit: '10mb'}), (request: Request, response: Response) => {
     try {
-        const { schedule, targetDate, mode, teamA, teamB, preferredPairs, restDeclarations } = req.body;
+        const { schedule, targetDate, mode, teamA, teamB, preferredPairs, restDeclarations } = request.body;
 
         if (!schedule ) {
-            console.error("Missing schedule or targetDate! Body received was:", req.body);
+            console.error("Missing schedule or targetDate! Body received was:", request.body);
 
-            return res.status(400).send('Missing schedule or targetDate in request body.');
+            return response.status(400).send('Missing schedule or targetDate in request body.');
         }
 
         const safeTargetDate = typeof targetDate === 'string' ? targetDate : "Unknown_Date";
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="Schedule_${safeTargetDate.replace(/\//g, '-')}.pdf"`);
+        response.setHeader('Content-Type', 'application/pdf');
+        response.setHeader('Content-Disposition', `attachment; filename="Schedule_${safeTargetDate.replace(/\//g, '-')}.pdf"`);
 
         const description = "11 minute timed games with a 1-2 minute break between rounds.\n5 points for a win\n3 points for a draw\n1 point for a loss with >7 points\n0 points for a loss with <7 points";
-        const generator = new PdfGenerator(res, `Schedule ${safeTargetDate}`, description, defaultPdfConfig);
+        const generator = new PdfGenerator(response, `Schedule ${safeTargetDate}`, description, defaultPdfConfig);
 
         generator.generate(schedule, {
             teams: (mode === 'teams' && teamA && teamB) ? { teamA, teamB } : undefined,
@@ -519,7 +519,7 @@ app.post('/api/download-pdf', express.json({limit: '10mb'}), (req: Request, res:
         });
     } catch (error: unknown) {
         console.error(error);
-        res.status(500).send('Error generating PDF');
+        response.status(500).send('Error generating PDF');
     }
 });
 

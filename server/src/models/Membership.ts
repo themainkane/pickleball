@@ -1,4 +1,5 @@
-import { Schema, model, InferSchemaType, Types } from 'mongoose';
+import { Schema, model, InferSchemaType } from 'mongoose';
+import type { Lean } from './lean';
 
 export enum ScopeType {
     Organisation = 'organisation',
@@ -61,6 +62,6 @@ membershipSchema.index({ userId: 1, scopeType: 1, scopeId: 1 }, { unique: true }
 membershipSchema.index({ scopeType: 1, scopeId: 1, role: 1 });
 
 export type Membership = InferSchemaType<typeof membershipSchema>;
-export type MembershipLean = Membership & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type MembershipLean = Lean<Membership>;
 
 export const MembershipModel = model('Membership', membershipSchema);

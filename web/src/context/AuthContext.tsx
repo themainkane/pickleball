@@ -1,13 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import * as api from '../lib/api.ts';
+import { apiClient, type ApiClient } from '../lib/ApiClient.ts';
+import type { AuthUser } from '../lib/apiTypes.ts';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
 type AuthState = {
     status: AuthStatus;
-    user: api.AuthUser | null;
+    user: AuthUser | null;
     signIn: (email: string, password: string) => Promise<void>;
     signOut: () => Promise<void>;
+    /** The client these calls go through, so features share one session. */
+    client: ApiClient;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -16,22 +19,23 @@ const AuthContext = createContext<AuthState | null>(null);
 // otherwise keep working until it expires).
 const CHANNEL_NAME = 'slice-auth';
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+/** `client` is injectable so tests (or a mock API) can supply an isolated one. */
+export function AuthProvider({ children, client = apiClient }: { children: ReactNode; client?: ApiClient }) {
     const [status, setStatus] = useState<AuthStatus>('loading');
-    const [user, setUser] = useState<api.AuthUser | null>(null);
+    const [user, setUser] = useState<AuthUser | null>(null);
 
     const clearLocal = useCallback(() => {
-        api.setAccessToken(null);
+        client.setAccessToken(null);
         setUser(null);
         setStatus('anonymous');
-    }, []);
+    }, [client]);
 
     // On page load, trade the httpOnly refresh cookie for an access token.
     // This is what keeps you logged in across refreshes.
     useEffect(() => {
         let cancelled = false;
 
-        api.refreshSession()
+        client.refreshSession()
             .then((session) => {
                 if (cancelled) return;
                 setUser(session.user);
@@ -44,10 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             cancelled = true;
         };
-    }, [clearLocal]);
+    }, [clearLocal, client]);
 
     useEffect(() => {
-        api.setSessionExpiredHandler(clearLocal);
+        client.setSessionExpiredHandler(clearLocal);
 
         const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(CHANNEL_NAME) : null;
 
@@ -56,21 +60,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         return () => {
-            api.setSessionExpiredHandler(null);
+            client.setSessionExpiredHandler(null);
             channel?.close();
         };
-    }, [clearLocal]);
+    }, [clearLocal, client]);
 
     const signIn = useCallback(async (email: string, password: string) => {
-        const session = await api.login(email, password);
+        const session = await client.login(email, password);
 
         setUser(session.user);
         setStatus('authenticated');
-    }, []);
+    }, [client]);
 
     const signOut = useCallback(async () => {
         try {
-            await api.logout();
+            await client.logout();
         } finally {
             clearLocal();
 
@@ -80,9 +84,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 channel.close();
             }
         }
-    }, [clearLocal]);
+    }, [clearLocal, client]);
 
-    const value = useMemo<AuthState>(() => ({ status, user, signIn, signOut }), [status, user, signIn, signOut]);
+    const value = useMemo<AuthState>(
+        () => ({ status, user, signIn, signOut, client }),
+        [status, user, signIn, signOut, client],
+    );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -94,4 +101,10 @@ export function useAuth() {
     if (!context) throw new Error('useAuth must be used inside AuthProvider');
 
     return context;
+}
+
+/** Features call the API through this, so they get whichever client the provider holds. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useApiClient() {
+    return useAuth().client;
 }

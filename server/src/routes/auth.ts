@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/requireAuth';
 import { authService, type IssuedRefreshToken } from '../services/AuthService';
 import { userService } from '../services/UserService';
 import { privateUser } from '../steralizers/userSerializer';
-import { isDuplicateKey } from './routeHelpers';
+import {badRequest, isDuplicateKey} from './routeHelpers';
 
 export const authRouter = Router();
 
@@ -44,12 +44,12 @@ function refreshCookieOptions(): CookieOptions {
     };
 }
 
-function setRefreshCookie(res: Response, refresh: IssuedRefreshToken) {
-    res.cookie(REFRESH_COOKIE, refresh.token, { ...refreshCookieOptions(), expires: refresh.expiresAt });
+function setRefreshCookie(response: Response, refresh: IssuedRefreshToken) {
+    response.cookie(REFRESH_COOKIE, refresh.token, { ...refreshCookieOptions(), expires: refresh.expiresAt });
 }
 
-function clearRefreshCookie(res: Response) {
-    res.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
+function clearRefreshCookie(response: Response) {
+    response.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
 }
 
 /**
@@ -57,9 +57,9 @@ function clearRefreshCookie(res: Response) {
  * plain cross-site form post, and cross-origin fetch with it needs a CORS preflight we
  * never approve.
  */
-function requireCsrfHeader(req: Request, res: Response, next: NextFunction) {
-    if (req.get('x-requested-with') !== 'fetch') {
-        res.status(403).json({ error: 'Missing X-Requested-With header' });
+function requireCsrfHeader(request: Request, response: Response, next: NextFunction) {
+    if (request.get('x-requested-with') !== 'fetch') {
+        response.status(403).json({ error: 'Missing X-Requested-With header' });
 
         return;
     }
@@ -67,45 +67,41 @@ function requireCsrfHeader(req: Request, res: Response, next: NextFunction) {
     next();
 }
 
-function badBody(res: Response, error: z.ZodError) {
-    res.status(400).json({ error: 'Invalid body', details: error.flatten().fieldErrors });
-}
+authRouter.post('/login', LOGIN_LIMITER, async (request, response) => {
+    const parsed = LOGIN_BODY.safeParse(request.body);
 
-authRouter.post('/login', LOGIN_LIMITER, async (req, res) => {
-    const parsed = LOGIN_BODY.safeParse(req.body);
-
-    if (!parsed.success) return badBody(res, parsed.error);
+    if (!parsed.success) return badRequest(response, 'Failed to Login', parsed.error);
 
     const { email, password } = parsed.data;
     const user = await userService.verifyCredentials(email, password);
 
     if (!user) {
-        res.status(401).json({ error: 'Invalid email or password' });
+        response.status(401).json({ error: 'Invalid email or password' });
 
         return;
     }
 
-    const refresh = await authService.issueRefreshToken(String(user._id), req.get('user-agent'));
+    const refresh = await authService.issueRefreshToken(String(user._id), request.get('user-agent'));
 
-    setRefreshCookie(res, refresh);
-    res.json({ token: authService.signAccessToken(user), user: privateUser(user) });
+    setRefreshCookie(response, refresh);
+    response.json({ token: authService.signAccessToken(user), user: privateUser(user) });
 });
 
-authRouter.post('/register', REGISTER_LIMITER, async (req, res) => {
-    const parsed = REGISTER_BODY.safeParse(req.body);
+authRouter.post('/register', REGISTER_LIMITER, async (request, response) => {
+    const parsed = REGISTER_BODY.safeParse(request.body);
 
-    if (!parsed.success) return badBody(res, parsed.error);
+    if (!parsed.success) return badRequest(response, 'Failed to Register', parsed.error);
 
     try {
         const user = await userService.register(parsed.data);
-        const refresh = await authService.issueRefreshToken(String(user._id), req.get('user-agent'));
+        const refresh = await authService.issueRefreshToken(String(user._id), request.get('user-agent'));
 
-        setRefreshCookie(res, refresh);
-        res.status(201).json({ token: authService.signAccessToken(user), user: privateUser(user) });
+        setRefreshCookie(response, refresh);
+        response.status(201).json({ token: authService.signAccessToken(user), user: privateUser(user) });
     } catch (error) {
         if (isDuplicateKey(error)) {
             // TODO insecure (account enumeration), remove alongside mail pipeline
-            res.status(409).json({ error: 'That email is already registered' });
+            response.status(409).json({ error: 'That email is already registered' });
 
             return;
         }
@@ -115,48 +111,48 @@ authRouter.post('/register', REGISTER_LIMITER, async (req, res) => {
 });
 
 /** Swap the refresh cookie for a new access token (and a rotated cookie). Called on page load. */
-authRouter.post('/refresh', REFRESH_LIMITER, requireCsrfHeader, async (req, res) => {
-    const presented: unknown = req.cookies?.[REFRESH_COOKIE];
+authRouter.post('/refresh', REFRESH_LIMITER, requireCsrfHeader, async (request, response) => {
+    const presented: unknown = request.cookies?.[REFRESH_COOKIE];
 
     if (typeof presented !== 'string' || !presented) {
-        res.status(401).json({ error: 'Not authenticated' });
+        response.status(401).json({ error: 'Not authenticated' });
 
         return;
     }
 
-    const result = await authService.rotateRefreshToken(presented, req.get('user-agent'));
+    const result = await authService.rotateRefreshToken(presented, request.get('user-agent'));
     const user = result.ok ? await userService.getById(result.userId) : null;
 
     if (!result.ok || !user) {
-        clearRefreshCookie(res);
-        res.status(401).json({ error: 'Not authenticated' });
+        clearRefreshCookie(response);
+        response.status(401).json({ error: 'Not authenticated' });
 
         return;
     }
 
-    setRefreshCookie(res, result.refresh);
-    res.json({ token: authService.signAccessToken(user), user: privateUser(user) });
+    setRefreshCookie(response, result.refresh);
+    response.json({ token: authService.signAccessToken(user), user: privateUser(user) });
 });
 
-authRouter.post('/logout', requireCsrfHeader, async (req, res) => {
-    const presented: unknown = req.cookies?.[REFRESH_COOKIE];
+authRouter.post('/logout', requireCsrfHeader, async (request, response) => {
+    const presented: unknown = request.cookies?.[REFRESH_COOKIE];
 
     if (typeof presented === 'string' && presented) {
         await authService.revokeRefreshToken(presented);
     }
 
-    clearRefreshCookie(res);
-    res.status(204).end();
+    clearRefreshCookie(response);
+    response.status(204).end();
 });
 
-authRouter.get('/me', requireAuth, async (req, res) => {
-    const user = await userService.getById(req.userId!);
+authRouter.get('/me', requireAuth, async (request, response) => {
+    const user = await userService.getById(request.userId!);
 
     if (!user) {
-        res.status(401).json({ error: 'Not authenticated' });
+        response.status(401).json({ error: 'Not authenticated' });
 
         return;
     }
 
-    res.json(privateUser(user));
+    response.json(privateUser(user));
 });

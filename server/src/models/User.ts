@@ -1,4 +1,5 @@
-import { Schema, model, InferSchemaType, HydratedDocument, Types } from 'mongoose';
+import { Schema, model, InferSchemaType, HydratedDocument } from 'mongoose';
+import type { Lean } from './lean';
 
 const userSchema = new Schema(
     {
@@ -11,7 +12,7 @@ const userSchema = new Schema(
         // Never set from a request body; grant with `npm run set-superuser`.
         isSuperuser: { type: Boolean, required: true, default: false },
         // Clubs, organisations and venues a user belongs to live in Membership.
-        teams: [{ type: Schema.Types.ObjectId, ref: 'Team' }],
+        // teams: [{ type: Schema.Types.ObjectId, ref: 'Team' }],
     },
     {
         timestamps: true,
@@ -20,6 +21,15 @@ const userSchema = new Schema(
 
 export type User = InferSchemaType<typeof userSchema>;
 export type UserDoc = HydratedDocument<User>;
-export type UserLean = User & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+
+/**
+ * A stored user as the rest of the app sees them. `passwordHash` is `select: false`, so
+ * queries never return it: omitting it keeps the type honest about what's actually there
+ * and stops the hash being serialized, logged or compared by accident.
+ */
+export type UserLean = Omit<Lean<User>, 'passwordHash'>;
+
+/** Only the credential check, which explicitly selects the hash, gets this. */
+export type UserWithPasswordHash = Lean<User>;
 
 export const UserModel = model('User', userSchema);

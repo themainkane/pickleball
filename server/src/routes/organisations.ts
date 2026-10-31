@@ -12,7 +12,7 @@ import { publicClub } from '../steralizers/clubSerializer';
 import { publicOrganisation } from '../steralizers/organisationSerializer';
 import { publicVenue } from '../steralizers/venueSerializer';
 import { createMembersRouter } from './members';
-import { badRequest, listQuerySchema, objectIdSchema } from './routeHelpers';
+import { badRequest, LIST_QUERY_SCHEMA, OBJECT_ID_SCHEMA } from './routeHelpers';
 import { CREATE_VENUE_FIELDS } from './venues';
 
 export const organisationsRouter = Router();
@@ -22,7 +22,7 @@ const CREATE_ORGANISATION_BODY = z.object({
 });
 
 const CREATE_ORGANISATION_REQUEST = CREATE_ORGANISATION_BODY.extend({
-    ownerUserId: objectIdSchema,
+    ownerUserId: OBJECT_ID_SCHEMA,
 });
 
 const UPDATE_ORGANISATION_BODY = CREATE_ORGANISATION_BODY.partial();
@@ -77,7 +77,7 @@ organisationsRouter.patch(
 
 /** GET /organisations/:organisationId/venues */
 organisationsRouter.get('/:organisationId/venues', requireAuth, async (request, response) => {
-    const parsed = listQuerySchema.safeParse(request.query);
+    const parsed = LIST_QUERY_SCHEMA.safeParse(request.query);
 
     if (!parsed.success) return badRequest(response, 'Invalid query', parsed.error);
 
@@ -107,7 +107,7 @@ organisationsRouter.post(
 
 /** GET /organisations/:organisationId/clubs — clubs this organisation runs */
 organisationsRouter.get('/:organisationId/clubs', requireAuth, async (request, response) => {
-    const parsed = listQuerySchema.safeParse(request.query);
+    const parsed = LIST_QUERY_SCHEMA.safeParse(request.query);
 
     if (!parsed.success) return badRequest(response, 'Invalid query', parsed.error);
 

@@ -1,6 +1,7 @@
-import { Schema, model, InferSchemaType, Types } from 'mongoose';
+import { Schema, model, InferSchemaType } from 'mongoose';
+import type { Lean } from './lean';
 
-/** The business entity. People get access through Membership, never by logging in as it. */
+/** Users get access through Membership, never by logging in as organisation */
 const organisationSchema = new Schema(
     {
         name: { type: String, required: true, trim: true, maxlength: 120 },
@@ -10,6 +11,6 @@ const organisationSchema = new Schema(
 );
 
 export type Organisation = InferSchemaType<typeof organisationSchema>;
-export type OrganisationLean = Organisation & { _id: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export type OrganisationLean = Lean<Organisation>;
 
 export const OrganisationModel = model('Organisation', organisationSchema);

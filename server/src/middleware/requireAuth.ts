@@ -8,22 +8,22 @@ declare module 'express-serve-static-core' {
     }
 }
 
-/** Validates `Authorization: Bearer <access token>` and sets req.userId. */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
-    const header = req.get('authorization') ?? '';
+/** Validates `Authorization: Bearer <access token>` and sets request.userId. */
+export function requireAuth(request: Request, response: Response, next: NextFunction) {
+    const header = request.get('authorization') ?? '';
     const [scheme, token] = header.split(' ');
 
     if (scheme !== 'Bearer' || !token) {
-        res.status(401).json({ error: 'Not authenticated' });
+        response.status(401).json({ error: 'Not authenticated' });
 
         return;
     }
 
     try {
-        req.userId = authService.verifyAccessToken(token).sub;
+        request.userId = authService.verifyAccessToken(token).sub;
         next();
     } catch {
         // Expired, bad signature, malformed — client should try /auth/refresh.
-        res.status(401).json({ error: 'Not authenticated' });
+        response.status(401).json({ error: 'Not authenticated' });
     }
 }
