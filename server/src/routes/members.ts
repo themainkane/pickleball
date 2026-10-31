@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/requireRole';
 import { Role, ScopeType } from '../models/Membership';
 import { membershipService, type MembershipChangeResult, type Scope } from '../services/MembershipService';
 import { userService } from '../services/UserService';
-import { publicMember } from '../steralizers/membershipSerializer';
+import { publicMember } from '../serializers/membershipSerializer';
 import { badRequest, LIST_QUERY_SCHEMA, OBJECT_ID_SCHEMA } from './routeHelpers';
 
 const ADD_MEMBER_BODY = z.object({

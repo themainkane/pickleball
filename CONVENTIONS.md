@@ -13,7 +13,7 @@ Ordered by the file tree. See `AGENTS.md` for commands and workflow.
 - Blank line before `return` and around `if` blocks (enforced by `padding-line-between-statements`).
 - Unused bindings are prefixed `_`, e.g. `const { passwordHash: _hash, ...safe } = user`.
 - Comments say *why*, not *what*. Document non-obvious trade-offs and security reasoning.
-- No new dependencies without being asked.
+- No non-null assertions (`!`) without a clear justification comment.
 
 ```ts
 // bad — shared mutable state: leaks between tests, impossible to isolate
@@ -118,7 +118,7 @@ export type UserWithPasswordHash = Lean<User>;
 - One router per resource; child routers mount under the parent (`/venues/:venueId/courts`).
 - Validate every body and query with a zod schema named `SCREAMING_SNAKE_CASE`; report failures via `badRequest`.
 - Child lookups are scoped by the parent id in the URL, so an admin of one parent can't reach another's children.
-- Respond with POJOs from `steralizers/`. Never return a Mongoose document, a model type, or a raw query result.
+- Respond with POJOs from `serializers/`. Never return a Mongoose document, a model type, or a raw query result.
 - Status codes: 201 create, 204 no body, 400 invalid input, 401 unauthenticated, 403 unauthorised, 404 missing, 409 conflict.
 
 ```ts
@@ -171,7 +171,7 @@ async updateDetails(id: string, patch: UpdateVenueInput) {
 }
 ```
 
-## `server/src/steralizers/`
+## `server/src/serializers/`
 
 - `publicX` for anyone, `privateX` for the owner, built by spreading `publicX`.
 - Map `_id` to a string `id`, absent values to `null`, and omit everything not meant to be public.

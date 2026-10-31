@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
 import { Role, ScopeType } from '../models/Membership';
 import { venueService } from '../services/VenueService';
-import { publicVenue } from '../steralizers/venueSerializer';
+import { publicVenue } from '../serializers/venueSerializer';
 import { createMembersRouter } from './members';
 import { courtsRouter } from './courts';
 import { badRequest } from './routeHelpers';
@@ -51,7 +51,12 @@ venuesRouter.patch('/:venueId', requireAuth, requireRole(ScopeType.Venue, 'venue
 
     const venue = await venueService.updateDetails(String(request.params.venueId), parsed.data);
 
-    response.json(publicVenue(venue!));
+    if (!venue) {
+        response.status(404).json({ error: 'Venue not found' });
+        return;
+    }
+
+    response.json(publicVenue(venue));
 });
 
 venuesRouter.use('/:venueId/members', createMembersRouter(ScopeType.Venue, 'venueId'));

@@ -5,7 +5,7 @@ import { env } from '../config/env';
 import { requireAuth } from '../middleware/requireAuth';
 import { authService, type IssuedRefreshToken } from '../services/AuthService';
 import { userService } from '../services/UserService';
-import { privateUser } from '../steralizers/userSerializer';
+import { privateUser } from '../serializers/userSerializer';
 import {badRequest, isDuplicateKey} from './routeHelpers';
 
 export const authRouter = Router();
