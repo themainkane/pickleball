@@ -11,13 +11,11 @@ export default function Toolbar({ children }: { children?: ReactNode }) {
             component="header"
             position="sticky"
             color="primary"
-            // Below md the bar is transparent so the circles float over the page, and it
-            // ignores clicks so content scrolling behind the gaps stays tappable.
-            // From md up it's the solid primary bar that hosts the nav tabs.
             sx={{
                 pt: 'env(safe-area-inset-top)', // iOS notch clearance
                 bgcolor: { xs: 'transparent', md: 'primary.main' },
                 boxShadow: { xs: 'none', md: 4 },
+                // Transparent bar must not swallow taps meant for the page behind it.
                 pointerEvents: { xs: 'none', md: 'auto' },
                 '& .MuiIconButton-root, & .MuiAvatar-root': { pointerEvents: 'auto' },
             }}

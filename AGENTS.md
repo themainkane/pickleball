@@ -42,6 +42,37 @@ After any change, in order:
 
 There is no test framework for `server/` or `web/` yet. Only `core/` has tests (`node:test`). Say so rather than claiming something is tested.
 
+## Comments
+
+- One line where possible. A comment that restates the code is noise — delete it.
+- Say *why*. Don't narrate what each line or branch does.
+- Never reference the prompt, the request or the conversation: no "as requested", "as discussed", "per instructions", "changed to…".
+- Describe the code as it is now, not its history.
+
+Good — earns its place in a few words:
+
+```ts
+// CSRF defence
+'X-Requested-With': 'fetch',
+...(token ? { Authorization: `Bearer ${token}` } : {}),
+...init.headers,
+```
+
+Bad — three lines paraphrasing five self-evident properties:
+
+```tsx
+// Below md the bar is transparent so the circles float over the page, and it
+// ignores clicks so content scrolling behind the gaps stays tappable.
+// From md up it's the solid primary bar that hosts the nav tabs.
+sx={{
+    pt: 'env(safe-area-inset-top)', // iOS notch clearance
+    bgcolor: { xs: 'transparent', md: 'primary.main' },
+    boxShadow: { xs: 'none', md: 4 },
+    pointerEvents: { xs: 'none', md: 'auto' },
+    '& .MuiIconButton-root, & .MuiAvatar-root': { pointerEvents: 'auto' },
+}}
+```
+
 ## Gotchas
 
 - Mongo must be a replica set for transactions; `docker-compose.yml` sets this up and the healthcheck initiates it.
